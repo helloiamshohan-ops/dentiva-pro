@@ -226,6 +226,50 @@ function Field({
   );
 }
 
+function PatientPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<Array<{ id: string; fullName: string; code: string }>>([]);
+  return (
+    <label className="field">
+      <span>Patient</span>
+      <input
+        value={q}
+        placeholder="Search name or code (P-000001)"
+        aria-label="Search patient"
+        onChange={(e) => {
+          const v = e.target.value;
+          setQ(v);
+          onChange(v);
+          void api<{ items: Array<{ id: string; fullName: string; code: string }> }>("/api/patients/list", {
+            method: "POST",
+            json: { search: v, page: 1, pageSize: 8 },
+          }).then((r) => setHits(r.items));
+        }}
+      />
+      {value && value !== q ? <span className="badge">{value}</span> : null}
+      {hits.length > 0 && (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, border: "1px solid var(--color-line)", borderRadius: 6 }}>
+          {hits.map((h) => (
+            <li key={h.id}>
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                onClick={() => {
+                  onChange(h.id);
+                  setQ(`${h.code} ${h.fullName}`);
+                  setHits([]);
+                }}
+              >
+                {h.code} · {h.fullName}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </label>
+  );
+}
+
 function Shell({ session, setSession }: { session: SessionInfo; setSession: (s: SessionInfo) => void }) {
   const route = useRoute();
   const [palette, setPalette] = useState(false);
@@ -665,6 +709,9 @@ function Patient360({ id, tab }: { id: string; tab?: string }) {
             <button className="btn btn-primary" onClick={() => go(`billing/new?patient=${id}`)}>
               Invoice
             </button>
+            <button className="btn btn-secondary" onClick={() => setActive("edit")}>
+              Edit
+            </button>
           </div>
         </div>
         {medical && String(medical.allergies || "") ? <div className="alert" style={{ marginTop: 12 }}>{String(medical.allergies)}</div> : null}
@@ -686,6 +733,16 @@ function Patient360({ id, tab }: { id: string; tab?: string }) {
       {active === "billing" && <PatientBilling patientId={id} />}
       {active === "attachments" && <AttachList patientId={id} />}
       {active === "notes" && <div className="card">{String(p.notes || "No notes.")}</div>}
+      {active === "edit" && (
+        <PatientForm
+          existing={p}
+          onSaved={() => {
+            setActive("overview");
+            void api<Record<string, unknown>>(`/api/patients/get?id=${id}`).then(setP);
+            void api<Record<string, unknown>>(`/api/patients/medical?id=${id}`).then(setMedical);
+          }}
+        />
+      )}
       {/* Patient 360 workspace */}
     </>
   );
@@ -1108,7 +1165,26 @@ function AttachList({ patientId }: { patientId: string }) {
           load();
         }}
       />
-      {!items.length ? <div className="empty">No attachments.</div> : items.map((a) => <div key={String(a.id)}>{String(a.filename)} · {String(a.mime || "")}</div>)}
+      {!items.length ? (
+        <div className="empty">No attachments.</div>
+      ) : (
+        items.map((a) => (
+          <div key={String(a.id)} className="row" style={{ justifyContent: "space-between", padding: "6px 0" }}>
+            <span>
+              {String(a.filename)} · {String(a.mime || "")}
+            </span>
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                const blob = await api<Blob>(`/api/attachments/file?id=${a.id}`);
+                downloadBlob(blob, String(a.filename));
+              }}
+            >
+              Download
+            </button>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -1124,7 +1200,7 @@ function Queue() {
     <>
       <PageHead title="Today’s queue" sub="Serials are independent of patient codes and invoices." />
       <div className="card row" style={{ marginBottom: 12 }}>
-        <Field label="Patient id" value={code} onChange={setCode} placeholder="Patient UUID" />
+        <PatientPicker value={code} onChange={setCode} />
         <button
           className="btn btn-primary"
           onClick={async () => {
@@ -1210,12 +1286,25 @@ function Appointments() {
       />
       <div className="card">
         <SimpleList rows={items.map((a) => ({ ...a, id: String(a.id) }))} empty="No appointments in this range." render={(a) => (
-          <div>
-            <strong>{String(a.patientName)}</strong> <span className="badge">{String(a.patientCode)}</span> · {String(a.startsAt)} · {String(a.status)}
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <strong>{String(a.patientName)}</strong> <span className="badge">{String(a.patientCode)}</span> · {String(a.startsAt)} · {String(a.status)}
+            </div>
+            <select
+              aria-label="Appointment status"
+              value={String(a.status)}
+              onChange={(e) => {
+                void api("/api/appointments/status", { method: "POST", json: { id: a.id, status: e.target.value } }).then(() => location.reload());
+              }}
+            >
+              {["scheduled", "confirmed", "arrived", "in_progress", "completed", "cancelled", "no_show"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
           </div>
         )} />
       </div>
-      {location.hash.includes("new") || view ? <NewAppointment onSaved={() => location.reload()} /> : null}
+      {location.hash.includes("new") ? <NewAppointment onSaved={() => { go("appointments"); location.reload(); }} /> : null}
     </>
   );
 }
@@ -1247,7 +1336,7 @@ function NewAppointment({ onSaved }: { onSaved: () => void }) {
       >
         <h2>New appointment</h2>
         {err && <div className="alert error">{err}</div>}
-        <Field label="Patient id" value={patientId} onChange={setPatientId} />
+        <PatientPicker value={patientId} onChange={setPatientId} />
         <Field label="Start" type="datetime-local" value={starts} onChange={setStarts} />
         <Field label="Duration (minutes)" value={duration} onChange={setDuration} />
         <div className="row" style={{ marginTop: 12 }}>
@@ -1304,10 +1393,15 @@ function InvoiceForm() {
   const [desc, setDesc] = useState("Consultation");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("500.00");
+  const [treatmentId, setTreatmentId] = useState("");
+  const [treatments, setTreatments] = useState<Array<Record<string, unknown>>>([]);
   const [err, setErr] = useState("");
+  useEffect(() => {
+    void api<Array<Record<string, unknown>>>("/api/treatments").then(setTreatments);
+  }, []);
   return (
     <>
-      <PageHead title="New invoice" />
+      <PageHead title="New invoice" sub="Catalog prices are suggestions only. Selecting a treatment does not bill automatically until you issue." />
       {err && <div className="alert error">{err}</div>}
       <form
         className="card grid"
@@ -1321,7 +1415,7 @@ function InvoiceForm() {
                 patientId,
                 issuedAt: nowIso(),
                 issue: true,
-                lines: [{ description: desc, quantity: Number(qty), unitPricePaisa: unit, discountPaisa: 0 }],
+                lines: [{ description: desc, quantity: Number(qty), unitPricePaisa: unit, discountPaisa: 0, treatmentId: treatmentId || undefined }],
               },
             });
             toast("Invoice issued. Treatment selection never bills automatically.");
@@ -1331,7 +1425,29 @@ function InvoiceForm() {
           }
         }}
       >
-        <Field label="Patient id" value={patientId} onChange={setPatientId} placeholder="Open from Patient 360 to prefill" />
+        {params.get("patient") ? <Field label="Patient id" value={patientId} onChange={setPatientId} /> : <PatientPicker value={patientId} onChange={setPatientId} />}
+        <label className="field">
+          <span>Treatment catalog (optional)</span>
+          <select
+            value={treatmentId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setTreatmentId(id);
+              const t = treatments.find((x) => String(x.id) === id);
+              if (t) {
+                setDesc(String(t.name));
+                setPrice((Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0) / 100).toFixed(2));
+              }
+            }}
+          >
+            <option value="">Custom line</option>
+            {treatments.map((t) => (
+              <option key={String(t.id)} value={String(t.id)}>
+                {String(t.name)} — {formatMoney(Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0))}
+              </option>
+            ))}
+          </select>
+        </label>
         <Field label="Description" value={desc} onChange={setDesc} />
         <Field label="Quantity" value={qty} onChange={setQty} />
         <Field label="Unit price (BDT)" value={price} onChange={setPrice} />
@@ -1441,6 +1557,41 @@ function InvoiceView({ id }: { id: string }) {
               <option value="80mm">80 mm</option>
             </select>
           </label>
+          {Number(inv.paidPaisa) > 0 && String(inv.status) !== "void" ? (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 12 }}
+              onClick={async () => {
+                const reason = window.prompt("Refund reason", "Correction");
+                if (!reason) return;
+                const raw = window.prompt("Refund amount (BDT)", String((Number(inv.paidPaisa) / 100).toFixed(2)));
+                if (!raw) return;
+                await api("/api/refunds", {
+                  method: "POST",
+                  json: { invoiceId: id, amountPaisa: Math.round(Number(raw) * 100), refundedAt: nowIso(), reason },
+                });
+                toast("Refund recorded. The original payment was not rewritten.");
+                load();
+              }}
+            >
+              Refund
+            </button>
+          ) : null}
+          {Number(inv.paidPaisa) === 0 && String(inv.status) !== "void" ? (
+            <button
+              className="btn btn-danger"
+              style={{ marginTop: 12 }}
+              onClick={async () => {
+                const reason = window.prompt("Void reason");
+                if (!reason) return;
+                await api("/api/invoices/void", { method: "POST", json: { id, reason } });
+                toast("Invoice voided.");
+                load();
+              }}
+            >
+              Void invoice
+            </button>
+          ) : null}
         </div>
       </div>
     </>
@@ -1449,17 +1600,35 @@ function InvoiceView({ id }: { id: string }) {
 
 function Inventory() {
   const toast = React.useContext(ToastCtx);
+  const [tab, setTab] = useState<"stock" | "purchases" | "suppliers">("stock");
   const [data, setData] = useState<{ items: Array<Record<string, unknown>> } | null>(null);
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [reorder, setReorder] = useState("0");
-  const load = () => void api<{ items: Array<Record<string, unknown>> }>("/api/inventory/list", { method: "POST", json: {} }).then(setData);
+  const [purchases, setPurchases] = useState<Array<Record<string, unknown>>>([]);
+  const [suppliers, setSuppliers] = useState<Array<Record<string, unknown>>>([]);
+  const [supplierName, setSupplierName] = useState("");
+  const [po, setPo] = useState({ itemId: "", qty: "1", cost: "0", purchasedAt: todayIsoDate() });
+  const load = () => {
+    void api<{ items: Array<Record<string, unknown>> }>("/api/inventory/list", { method: "POST", json: {} }).then(setData);
+    void api<{ items: Array<Record<string, unknown>> }>("/api/purchases/list", { method: "POST", json: { page: 1 } }).then((r) => setPurchases(r.items));
+    void api<Array<Record<string, unknown>>>("/api/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
+  };
   useEffect(() => {
     load();
   }, []);
   return (
     <>
-      <PageHead title="Inventory" sub="Stock cannot go negative." />
+      <PageHead title="Inventory" sub="Stock cannot go negative. Purchases increase on-hand quantity." />
+      <div className="tabs" role="tablist">
+        {(["stock", "purchases", "suppliers"] as const).map((t) => (
+          <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {tab !== "stock" ? null : (
+        <>
       <div className="card grid grid-2" style={{ marginBottom: 16 }}>
         <Field label="SKU" value={sku} onChange={setSku} />
         <Field label="Name" value={name} onChange={setName} />
@@ -1520,6 +1689,82 @@ function Inventory() {
         </table>
         {!data?.items.length && <div className="empty">No stock items.</div>}
       </div>
+        </>
+      )}
+      {tab === "purchases" && (
+        <div className="card grid">
+          <h3>Receive purchase</h3>
+          <label className="field">
+            <span>Item</span>
+            <select value={po.itemId} onChange={(e) => setPo({ ...po, itemId: e.target.value })}>
+              <option value="">Select item</option>
+              {(data?.items || []).map((i) => (
+                <option key={String(i.id)} value={String(i.id)}>
+                  {String(i.sku)} · {String(i.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Field label="Quantity" value={po.qty} onChange={(v) => setPo({ ...po, qty: v })} />
+          <Field label="Unit cost (BDT)" value={po.cost} onChange={(v) => setPo({ ...po, cost: v })} />
+          <Field label="Purchased at" type="date" value={po.purchasedAt} onChange={(v) => setPo({ ...po, purchasedAt: v })} />
+          <button
+            className="btn btn-primary"
+            onClick={async () => {
+              await api("/api/purchases", {
+                method: "POST",
+                json: {
+                  purchasedAt: new Date(`${po.purchasedAt}T09:00:00+06:00`).toISOString(),
+                  lines: [{ itemId: po.itemId, quantity: Number(po.qty), unitCostPaisa: Math.round(Number(po.cost) * 100) }],
+                },
+              });
+              toast("Purchase received. Stock increased.");
+              load();
+            }}
+          >
+            Receive stock
+          </button>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Number</th>
+                <th>When</th>
+                <th className="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {purchases.map((p) => (
+                <tr key={String(p.id)}>
+                  <td>{String(p.number)}</td>
+                  <td>{String(p.purchased_at || p.purchasedAt)}</td>
+                  <td className="num">{formatMoney(Number(p.total_paisa ?? p.totalPaisa ?? 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tab === "suppliers" && (
+        <div className="card grid">
+          <Field label="Supplier name" value={supplierName} onChange={setSupplierName} />
+          <button
+            className="btn btn-primary"
+            onClick={async () => {
+              await api("/api/suppliers", { method: "POST", json: { name: supplierName } });
+              setSupplierName("");
+              toast("Supplier saved.");
+              load();
+            }}
+          >
+            Add supplier
+          </button>
+          <SimpleList
+            rows={suppliers.map((s) => ({ ...s, id: String(s.id) }))}
+            empty="No suppliers."
+            render={(s) => <div>{String(s.name)} {s.phone ? `· ${String(s.phone)}` : ""}</div>}
+          />
+        </div>
+      )}
     </>
   );
 }
@@ -1661,7 +1906,9 @@ function Notifications() {
 
 function Settings({ session }: { session: SessionInfo }) {
   const toast = React.useContext(ToastCtx);
-  const [tab, setTab] = useState<"clinic" | "staff" | "data" | "security">("clinic");
+  const [tab, setTab] = useState<"clinic" | "staff" | "catalog" | "data" | "security">("clinic");
+  const [treatments, setTreatments] = useState<Array<Record<string, unknown>>>([]);
+  const [tx, setTx] = useState({ name: "", category: "Exam", price: "0" });
   const [clinic, setClinic] = useState<Record<string, string> | null>(null);
   const [diag, setDiag] = useState<Record<string, unknown> | null>(null);
   const [staff, setStaff] = useState<Array<Record<string, unknown>>>([]);
@@ -1673,13 +1920,14 @@ function Settings({ session }: { session: SessionInfo }) {
   useEffect(() => {
     void api<Record<string, string>>("/api/clinic").then(setClinic);
     void api<Array<Record<string, unknown>>>("/api/staff").then(setStaff).catch(() => setStaff([]));
+    void api<Array<Record<string, unknown>>>("/api/treatments").then(setTreatments).catch(() => setTreatments([]));
   }, []);
   if (!clinic) return <div className="skel" style={{ height: 120 }} />;
   return (
     <>
       <PageHead title="Settings" sub={`Signed in as ${session.name}`} />
       <div className="tabs" role="tablist">
-        {(["clinic", "staff", "data", "security"] as const).map((t) => (
+        {(["clinic", "staff", "catalog", "data", "security"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
             {t}
           </button>
@@ -1776,6 +2024,49 @@ function Settings({ session }: { session: SessionInfo }) {
               Add staff
             </button>
           </div>
+        </div>
+      )}
+      {tab === "catalog" && (
+        <div className="card">
+          <h3>Treatment catalog</h3>
+          <p style={{ color: "var(--color-muted)", margin: "8px 0 12px" }}>Catalog items never create invoices by themselves.</p>
+          <div className="grid grid-2">
+            <Field label="Name" value={tx.name} onChange={(v) => setTx({ ...tx, name: v })} />
+            <Field label="Category" value={tx.category} onChange={(v) => setTx({ ...tx, category: v })} />
+            <Field label="Default price (BDT)" value={tx.price} onChange={(v) => setTx({ ...tx, price: v })} />
+            <button
+              className="btn btn-primary"
+              onClick={async () => {
+                await api("/api/treatments", {
+                  method: "POST",
+                  json: { name: tx.name, category: tx.category, defaultPricePaisa: Math.round(Number(tx.price) * 100) },
+                });
+                toast("Treatment saved.");
+                setTx({ name: "", category: "Exam", price: "0" });
+                setTreatments(await api("/api/treatments"));
+              }}
+            >
+              Add treatment
+            </button>
+          </div>
+          <table className="data" style={{ marginTop: 16 }}>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th className="num">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {treatments.map((t) => (
+                <tr key={String(t.id)}>
+                  <td>{String(t.name)}</td>
+                  <td>{String(t.category)}</td>
+                  <td className="num">{formatMoney(Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
       {tab === "data" && (

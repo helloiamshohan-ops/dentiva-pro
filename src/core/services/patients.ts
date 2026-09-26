@@ -129,9 +129,18 @@ export class PatientService {
 
   getByCode(actor: Actor, code: string): Patient {
     requirePermission(actor, "patients.read");
-    const row = this.core.db.prepare("SELECT id FROM patients WHERE code = ?").get(code) as { id: string } | undefined;
+    const row = this.core.db.prepare("SELECT id FROM patients WHERE code = ? COLLATE NOCASE").get(code.trim()) as { id: string } | undefined;
     if (!row) throw new AppError("NOT_FOUND", "Patient was not found.");
     return this.get(actor, row.id);
+  }
+
+  resolve(actor: Actor, ref: string): Patient {
+    requirePermission(actor, "patients.read");
+    const t = ref.trim();
+    if (!t) throw new AppError("VALIDATION", "Enter a patient code or id.");
+    const byCode = this.core.db.prepare("SELECT id FROM patients WHERE code = ? COLLATE NOCASE").get(t) as { id: string } | undefined;
+    if (byCode) return this.get(actor, byCode.id);
+    return this.get(actor, t);
   }
 
   medical(actor: Actor, patientId: string): PatientMedical {

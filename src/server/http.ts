@@ -154,6 +154,7 @@ function buildRoutes(): Map<string, Handler> {
 
   add("POST", "/api/patients/list", ({ app, actor, body }) => app.patients.list(must(actor), body as never));
   add("GET", "/api/patients/get", ({ app, actor, query }) => app.patients.get(must(actor), query.get("id") || ""));
+  add("GET", "/api/patients/resolve", ({ app, actor, query }) => app.patients.resolve(must(actor), query.get("q") || ""));
   add("POST", "/api/patients", ({ app, actor, body }) => app.patients.create(must(actor), body));
   add("PUT", "/api/patients", ({ app, actor, body }) => {
     const b = body as { id: string };
@@ -216,7 +217,11 @@ function buildRoutes(): Map<string, Handler> {
   );
 
   add("POST", "/api/appointments/list", ({ app, actor, body }) => app.schedule.listAppointments(must(actor), body as never));
-  add("POST", "/api/appointments", ({ app, actor, body }) => app.schedule.createAppointment(must(actor), body));
+  add("POST", "/api/appointments", ({ app, actor, body }) => {
+    const b = body as { patientId: string } & Record<string, unknown>;
+    const patient = app.patients.resolve(must(actor), b.patientId);
+    return app.schedule.createAppointment(must(actor), { ...b, patientId: patient.id });
+  });
   add("PUT", "/api/appointments", ({ app, actor, body }) => {
     const b = body as { id: string };
     return app.schedule.updateAppointment(must(actor), b.id, body);
@@ -231,7 +236,8 @@ function buildRoutes(): Map<string, Handler> {
   add("GET", "/api/queue", ({ app, actor, query }) => app.schedule.listQueue(must(actor), query.get("date") || undefined));
   add("POST", "/api/queue", ({ app, actor, body }) => {
     const b = body as { patientId: string; appointmentId?: string; notes?: string };
-    return app.schedule.enqueue(must(actor), b.patientId, b.appointmentId, b.notes);
+    const patient = app.patients.resolve(must(actor), b.patientId);
+    return app.schedule.enqueue(must(actor), patient.id, b.appointmentId, b.notes);
   });
   add("POST", "/api/queue/status", ({ app, actor, body }) => {
     const b = body as { id: string; status: string };
@@ -240,7 +246,11 @@ function buildRoutes(): Map<string, Handler> {
 
   add("POST", "/api/invoices/list", ({ app, actor, body }) => app.billing.listInvoices(must(actor), body as never));
   add("GET", "/api/invoices/get", ({ app, actor, query }) => app.billing.getInvoice(must(actor), query.get("id") || ""));
-  add("POST", "/api/invoices", ({ app, actor, body }) => app.billing.createInvoice(must(actor), body));
+  add("POST", "/api/invoices", ({ app, actor, body }) => {
+    const b = body as { patientId: string } & Record<string, unknown>;
+    const patient = app.patients.resolve(must(actor), b.patientId);
+    return app.billing.createInvoice(must(actor), { ...b, patientId: patient.id });
+  });
   add("PUT", "/api/invoices", ({ app, actor, body }) => {
     const b = body as { id: string };
     return app.billing.updateInvoice(must(actor), b.id, body);
@@ -270,6 +280,7 @@ function buildRoutes(): Map<string, Handler> {
   add("GET", "/api/suppliers", ({ app, actor }) => app.inventory.listSuppliers(must(actor)));
   add("POST", "/api/suppliers", ({ app, actor, body }) => app.inventory.saveSupplier(must(actor), body));
   add("POST", "/api/purchases", ({ app, actor, body }) => app.inventory.createPurchase(must(actor), body));
+  add("GET", "/api/purchases/get", ({ app, actor, query }) => app.inventory.getPurchase(must(actor), query.get("id") || ""));
   add("POST", "/api/purchases/list", ({ app, actor, body }) => {
     const b = body as { page?: number; pageSize?: number };
     return app.inventory.listPurchases(must(actor), b.page, b.pageSize);
@@ -325,6 +336,10 @@ function buildRoutes(): Map<string, Handler> {
     const b = body as { entityType: string; entityId: string; filename: string; mime?: string; dataBase64: string };
     const data = Buffer.from(b.dataBase64 || "", "base64");
     return app.attachments.add(must(actor), b.entityType, b.entityId, b.filename, data, b.mime);
+  });
+  add("GET", "/api/attachments/file", ({ app, actor, query }) => {
+    const file = app.attachments.read(must(actor), query.get("id") || "");
+    return { $binary: true, data: file.data, filename: file.filename, mime: file.mime || "application/octet-stream" };
   });
 
   add("POST", "/api/pdf/prescription", async ({ app, actor, body }) => {
