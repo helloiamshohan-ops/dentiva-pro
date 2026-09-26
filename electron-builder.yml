@@ -1,0 +1,53 @@
+appId: com.dentivapro.app
+productName: Dentiva Pro
+copyright: Copyright © Dentiva Pro
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+asar: true
+directories:
+  output: release
+  buildResources: resources
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+extraResources:
+  - from: resources/icons
+    to: icons
+    filter:
+      - "**/*"
+asarUnpack:
+  - "**/*.node"
+win:
+  icon: resources/icons/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  legalTrademarks: Dentiva Pro
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Dentiva Pro
+  uninstallDisplayName: Dentiva Pro
+  installerIcon: resources/icons/icon.ico
+  uninstallerIcon: resources/icons/icon.ico
+  license: resources/license.txt
+linux:
+  icon: resources/icons
+  target:
+    - dir
+    - zip
+extraMetadata:
+  main: dist/main/index.js
+electronLanguages:
+  - en-US

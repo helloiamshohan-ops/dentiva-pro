@@ -1,0 +1,65 @@
+{
+  "name": "dentiva-pro",
+  "version": "1.0.0",
+  "description": "Dentiva Pro — Premium Dental Clinic / Dental Practice Management Software",
+  "author": "Dentiva Pro",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:ui": "vite --config vite.config.ts",
+    "dev:api": "tsx src/server/index.ts",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build --config vite.config.ts",
+    "build:main": "tsx scripts/build-main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
+    "test": "NODE_OPTIONS=--experimental-sqlite vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:security": "vitest run tests/security",
+    "test:pdf": "vitest run tests/pdf",
+    "test:perf": "vitest run tests/performance",
+    "test:e2e": "vitest run tests/e2e",
+    "audit:source": "tsx scripts/source-audit.ts",
+    "dist:win": "electron-builder --win --x64",
+    "dist:dir": "electron-builder --dir",
+    "start:electron": "electron dist/main/index.js",
+    "preview": "node scripts/dev.mjs"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "luxon": "^3.6.1",
+    "pdfkit": "^0.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@types/luxon": "^3.6.2",
+    "@types/node": "^22.14.1",
+    "@types/pdfkit": "^0.13.9",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "@vitejs/plugin-react": "^4.4.1",
+    "esbuild": "^0.25.2",
+    "eslint": "^9.24.0",
+    "pdf-parse": "^1.1.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1",
+    "vite": "^6.3.2",
+    "vitest": "^3.1.1"
+  },
+  "optionalDependencies": {
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12"
+  }
+}

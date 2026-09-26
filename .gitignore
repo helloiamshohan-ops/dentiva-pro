@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+out/
+release/
+build/win-unpacked/
+build/linux-unpacked/
+
+# Runtime / local data
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+attachments/
+backups/
+.tmp/
+tmp/
+temp/
+
+# Logs / debug
+*.log
+npm-debug.log*
+.cache/
+
+# Tests / coverage
+coverage/
+.vitest/
+playwright-report/
+test-results/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+
+# Packaging leftovers
+*.exe
+*.msi
+*.dmg
+*.appx
+*.blockmap
+*.snap
+*.AppImage
+
+# Keep source assets
+!resources/**
+
+# OS
+desktop.ini

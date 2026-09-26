@@ -1,0 +1,8 @@
+Dentiva Pro
+Copyright © Dentiva Pro
+
+This software is licensed for use with a purchased copy of Dentiva Pro.
+No activation, serial number, or online license check is required to run the application.
+
+Patient records stored by this application are confidential.
+Backups remain on the local computer unless the clinic copies them elsewhere.
