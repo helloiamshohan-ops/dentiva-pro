@@ -7,11 +7,11 @@
 
 ## Current phase
 
-**IMPLEMENTATION / TEST** — remaining commercial UI/ops: purchases pay, chairs/rooms, follow-ups, referrals, attachment MIME.
+**IMPLEMENTATION / TEST** — appointment resource pickers, purchase supplier link.
 
 ## Current subphase
 
-Typecheck, lint, and 40 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
+Typecheck, lint, and 41 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
 
 ## Current objective
 
@@ -20,7 +20,7 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 ## Repository ground truth
 
 - Branch: `arena/01a0dbe6-dentiva-pro`
-- Last pushed: `76d961d` plus this continue pass
+- Last pushed before this pass: `788c645`
 
 ## Environment
 
@@ -32,22 +32,22 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Completed requirements
 
-- [x] Core domains, Patient 360, billing, inventory purchases + pay, catalog
-- [x] Follow-ups, referrals, chairs/rooms editor, attachment MIME allow-list
-- [x] Tests (40 passing on this host)
+- [x] Core domains, Patient 360, billing, inventory, catalog, follow-ups, referrals
+- [x] Appointment dentist/chair/room picker; purchase supplier on receive
+- [x] Tests (41 passing on this host)
 - [ ] Windows package / signed installer
 
 ## Verified requirements
 
 - `npx tsc --noEmit -p tsconfig.json` — green (Electron `src/main` + `src/preload` excluded)
 - `npx eslint . --ext .ts,.tsx --max-warnings 0` — green
-- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 11 files, 40 tests passed
+- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 11 files, 41 tests passed
 
 **Not verified:** Windows install/uninstall, NSIS, code signing, Electron packaged runtime, 100K-patient scale.
 
 ## Test results
 
-11 files / 40 tests passed, including clinical-ops (follow-up/referral, MIME reject, purchase pay, chairs).
+11 files / 41 tests passed, including chair overlap and supplier-linked purchase.
 
 ## Known defects
 
@@ -63,7 +63,7 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Exact unfinished task
 
-Windows packaging when the environment allows; optional remaining polish (appointment dentist/chair picker, purchase supplier link on receive form).
+Windows packaging when the environment allows.
 
 ## Exact next action
 

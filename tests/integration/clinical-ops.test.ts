@@ -69,4 +69,37 @@ describe("clinical ops", () => {
     expect(chair.name).toBe("Chair 3");
     expect(app.schedule.listChairs().some((c) => (c as { name: string }).name === "Chair 3")).toBe(true);
   });
+
+  it("prevents overlapping chair bookings and links a supplier on purchase", async () => {
+    const ctx = await bootApp();
+    apps.push(ctx);
+    const { app, actor } = ctx;
+    const p1 = app.patients.create(actor, { fullName: "Chair A", ignoreDuplicateWarning: true });
+    const p2 = app.patients.create(actor, { fullName: "Chair B", ignoreDuplicateWarning: true });
+    const chair = app.schedule.saveChair(actor, null, "Overlap Chair");
+    const start = new Date("2026-07-01T11:00:00+06:00").toISOString();
+    app.schedule.createAppointment(actor, {
+      patientId: p1.id,
+      chairId: chair.id,
+      startsAt: start,
+      durationMinutes: 45,
+    });
+    expect(() =>
+      app.schedule.createAppointment(actor, {
+        patientId: p2.id,
+        chairId: chair.id,
+        startsAt: new Date("2026-07-01T11:20:00+06:00").toISOString(),
+        durationMinutes: 30,
+      }),
+    ).toThrow(/chair is already booked/i);
+    const supplier = app.inventory.saveSupplier(actor, { name: "Dhaka Dental Supply", phone: "01710009999" }) as { id: string; name: string };
+    const item = app.inventory.createItem(actor, { sku: "GUTTA-1", name: "Gutta percha" });
+    const po = app.inventory.createPurchase(actor, {
+      supplierId: supplier.id,
+      purchasedAt: new Date("2026-07-02T09:00:00+06:00").toISOString(),
+      lines: [{ itemId: item.id, quantity: 4, unitCostPaisa: 800 }],
+    }) as unknown as { supplier_id: string; total_paisa: number };
+    expect(po.supplier_id).toBe(supplier.id);
+    expect(po.total_paisa).toBe(3200);
+  });
 });

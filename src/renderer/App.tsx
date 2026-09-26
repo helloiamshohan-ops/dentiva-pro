@@ -1389,6 +1389,7 @@ function Appointments() {
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
               <strong>{String(a.patientName)}</strong> <span className="badge">{String(a.patientCode)}</span> · {String(a.startsAt)} · {String(a.status)}
+              {a.dentistName ? ` · ${String(a.dentistName)}` : ""}{a.chairName ? ` · ${String(a.chairName)}` : ""}
             </div>
             <select
               aria-label="Appointment status"
@@ -1414,7 +1415,18 @@ function NewAppointment({ onSaved }: { onSaved: () => void }) {
   const [patientId, setPatientId] = useState("");
   const [starts, setStarts] = useState(todayIsoDate() + "T10:00");
   const [duration, setDuration] = useState("30");
+  const [dentistId, setDentistId] = useState("");
+  const [chairId, setChairId] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [dentists, setDentists] = useState<Array<{ id: string; name: string }>>([]);
+  const [chairs, setChairs] = useState<Array<{ id: string; name: string }>>([]);
+  const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
   const [err, setErr] = useState("");
+  useEffect(() => {
+    void api<Array<{ id: string; name: string }>>("/api/dentists").then(setDentists);
+    void api<Array<{ id: string; name: string }>>("/api/chairs").then(setChairs);
+    void api<Array<{ id: string; name: string }>>("/api/rooms").then(setRooms);
+  }, []);
   if (!open) return null;
   return (
     <div className="modal-backdrop" onClick={() => { setOpen(false); go("appointments"); }}>
@@ -1426,7 +1438,14 @@ function NewAppointment({ onSaved }: { onSaved: () => void }) {
           try {
             await api("/api/appointments", {
               method: "POST",
-              json: { patientId, startsAt: new Date(starts).toISOString(), durationMinutes: Number(duration) },
+              json: {
+                patientId,
+                startsAt: new Date(starts).toISOString(),
+                durationMinutes: Number(duration),
+                dentistId: dentistId || undefined,
+                chairId: chairId || undefined,
+                roomId: roomId || undefined,
+              },
             });
             onSaved();
           } catch (ex) {
@@ -1437,6 +1456,33 @@ function NewAppointment({ onSaved }: { onSaved: () => void }) {
         <h2>New appointment</h2>
         {err && <div className="alert error">{err}</div>}
         <PatientPicker value={patientId} onChange={setPatientId} />
+        <label className="field">
+          <span>Dentist</span>
+          <select value={dentistId} onChange={(e) => setDentistId(e.target.value)} aria-label="Dentist">
+            <option value="">Any</option>
+            {dentists.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Chair</span>
+          <select value={chairId} onChange={(e) => setChairId(e.target.value)} aria-label="Chair">
+            <option value="">Any</option>
+            {chairs.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Room</span>
+          <select value={roomId} onChange={(e) => setRoomId(e.target.value)} aria-label="Room">
+            <option value="">Any</option>
+            {rooms.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
         <Field label="Start" type="datetime-local" value={starts} onChange={setStarts} />
         <Field label="Duration (minutes)" value={duration} onChange={setDuration} />
         <div className="row" style={{ marginTop: 12 }}>
@@ -1708,7 +1754,7 @@ function Inventory() {
   const [purchases, setPurchases] = useState<Array<Record<string, unknown>>>([]);
   const [suppliers, setSuppliers] = useState<Array<Record<string, unknown>>>([]);
   const [supplierName, setSupplierName] = useState("");
-  const [po, setPo] = useState({ itemId: "", qty: "1", cost: "0", purchasedAt: todayIsoDate() });
+  const [po, setPo] = useState({ itemId: "", supplierId: "", qty: "1", cost: "0", purchasedAt: todayIsoDate() });
   const load = () => {
     void api<{ items: Array<Record<string, unknown>> }>("/api/inventory/list", { method: "POST", json: {} }).then(setData);
     void api<{ items: Array<Record<string, unknown>> }>("/api/purchases/list", { method: "POST", json: { page: 1 } }).then((r) => setPurchases(r.items));
@@ -1805,6 +1851,15 @@ function Inventory() {
               ))}
             </select>
           </label>
+          <label className="field">
+            <span>Supplier</span>
+            <select value={po.supplierId} onChange={(e) => setPo({ ...po, supplierId: e.target.value })} aria-label="Supplier">
+              <option value="">None</option>
+              {suppliers.map((s) => (
+                <option key={String(s.id)} value={String(s.id)}>{String(s.name)}</option>
+              ))}
+            </select>
+          </label>
           <Field label="Quantity" value={po.qty} onChange={(v) => setPo({ ...po, qty: v })} />
           <Field label="Unit cost (BDT)" value={po.cost} onChange={(v) => setPo({ ...po, cost: v })} />
           <Field label="Purchased at" type="date" value={po.purchasedAt} onChange={(v) => setPo({ ...po, purchasedAt: v })} />
@@ -1814,6 +1869,7 @@ function Inventory() {
               await api("/api/purchases", {
                 method: "POST",
                 json: {
+                  supplierId: po.supplierId || undefined,
                   purchasedAt: new Date(`${po.purchasedAt}T09:00:00+06:00`).toISOString(),
                   lines: [{ itemId: po.itemId, quantity: Number(po.qty), unitCostPaisa: Math.round(Number(po.cost) * 100) }],
                 },
