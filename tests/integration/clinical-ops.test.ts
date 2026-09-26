@@ -102,4 +102,30 @@ describe("clinical ops", () => {
     expect(po.supplier_id).toBe(supplier.id);
     expect(po.total_paisa).toBe(3200);
   });
+
+  it("records visit procedures without creating an invoice and updates plan status only", async () => {
+    const ctx = await bootApp();
+    apps.push(ctx);
+    const { app, actor } = ctx;
+    const p = app.patients.create(actor, { fullName: "Proc Case", ignoreDuplicateWarning: true });
+    const visit = app.clinical.createVisit(actor, {
+      patientId: p.id,
+      visitedAt: new Date("2026-08-01T09:00:00+06:00").toISOString(),
+      chiefComplaint: "Broken filling",
+      treatmentPerformed: "Replacement",
+      procedures: [{ name: "Composite Filling (Posterior)", tooth: "46" }],
+    });
+    const loaded = app.clinical.getVisit(actor, visit.id);
+    expect(loaded.procedures.some((x) => x.name.includes("Composite") && x.tooth === "46")).toBe(true);
+    expect(app.billing.listInvoices(actor, { patientId: p.id }).total).toBe(0);
+    const plan = app.clinical.createPlan(actor, {
+      patientId: p.id,
+      title: "RCT plan",
+      items: [{ name: "Root canal 46", estimatedPaisa: 800000 }],
+    }) as unknown as { id: string; status: string };
+    expect(plan.status).toBe("draft");
+    const presented = app.clinical.setPlanStatus(actor, plan.id, "presented") as unknown as { status: string };
+    expect(presented.status).toBe("presented");
+    expect(app.billing.listInvoices(actor, { patientId: p.id }).total).toBe(0);
+  });
 });

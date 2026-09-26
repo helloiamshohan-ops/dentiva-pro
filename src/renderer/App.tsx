@@ -852,7 +852,7 @@ function VisitList({ patientId }: { patientId: string }) {
 }
 
 function VisitModal({ patientId, onClose, onSaved }: { patientId: string; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ visitedAt: nowIso(), chiefComplaint: "", findings: "", diagnosis: "", treatmentPerformed: "", notes: "" });
+  const [form, setForm] = useState({ visitedAt: nowIso(), chiefComplaint: "", findings: "", diagnosis: "", treatmentPerformed: "", notes: "", procedureName: "", tooth: "" });
   const [err, setErr] = useState("");
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -862,7 +862,22 @@ function VisitModal({ patientId, onClose, onSaved }: { patientId: string; onClos
         onSubmit={async (e) => {
           e.preventDefault();
           try {
-            await api("/api/visits", { method: "POST", json: { patientId, ...form } });
+            const procedures = form.procedureName.trim()
+              ? [{ name: form.procedureName.trim(), tooth: form.tooth || undefined }]
+              : undefined;
+            await api("/api/visits", {
+              method: "POST",
+              json: {
+                patientId,
+                visitedAt: form.visitedAt,
+                chiefComplaint: form.chiefComplaint,
+                findings: form.findings,
+                diagnosis: form.diagnosis,
+                treatmentPerformed: form.treatmentPerformed,
+                notes: form.notes,
+                procedures,
+              },
+            });
             onSaved();
           } catch (ex) {
             setErr(ex instanceof Error ? ex.message : "Unable to save the visit.");
@@ -870,12 +885,15 @@ function VisitModal({ patientId, onClose, onSaved }: { patientId: string; onClos
         }}
       >
         <h2>New visit</h2>
+        <p style={{ color: "var(--color-muted)", marginBottom: 8 }}>Documented procedures never create invoices by themselves.</p>
         {err && <div className="alert error">{err}</div>}
         <div className="grid" style={{ gap: 10, marginTop: 12 }}>
           <Field label="Chief complaint" value={form.chiefComplaint} onChange={(v) => setForm({ ...form, chiefComplaint: v })} />
           <Field label="Findings" value={form.findings} onChange={(v) => setForm({ ...form, findings: v })} />
           <Field label="Diagnosis / documentation" value={form.diagnosis} onChange={(v) => setForm({ ...form, diagnosis: v })} />
           <Field label="Treatment performed" value={form.treatmentPerformed} onChange={(v) => setForm({ ...form, treatmentPerformed: v })} />
+          <Field label="Procedure (optional)" value={form.procedureName} onChange={(v) => setForm({ ...form, procedureName: v })} />
+          <Field label="Tooth (FDI, optional)" value={form.tooth} onChange={(v) => setForm({ ...form, tooth: v })} />
           <Field label="Notes" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} />
         </div>
         <div className="row" style={{ marginTop: 16 }}>
@@ -1098,8 +1116,23 @@ function Plans({ patientId }: { patientId: string }) {
         rows={items.map((p) => ({ ...p, id: String(p.id) }))}
         empty="No plans."
         render={(p) => (
-          <div>
-            <strong>{String(p.title || "Plan")}</strong> · {String(p.status)} · {formatMoney(Number(p.estimated_total_paisa || p.estimatedTotalPaisa || 0))}
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span>
+              <strong>{String(p.title || "Plan")}</strong> · {String(p.status)} · {formatMoney(Number(p.estimated_total_paisa || p.estimatedTotalPaisa || 0))}
+            </span>
+            <select
+              aria-label="Plan status"
+              value={String(p.status)}
+              onChange={async (e) => {
+                await api("/api/plans/status", { method: "POST", json: { id: p.id, status: e.target.value } });
+                toast("Plan status updated. No invoice was created.");
+                load();
+              }}
+            >
+              {["draft", "presented", "accepted", "rejected", "converted", "cancelled"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
           </div>
         )}
       />
@@ -2121,9 +2154,25 @@ function Notifications() {
       <PageHead title="Notifications" sub={data ? `${data.total} total` : ""} />
       <div className="card">
         <SimpleList rows={(data?.items || []).map((n) => ({ ...n, id: String(n.id) }))} empty="No notifications." render={(n) => (
-          <div>
-            <strong>{String(n.title)}</strong>
-            <div style={{ color: "var(--color-muted)" }}>{String(n.body)}</div>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <strong>{String(n.title)}</strong>
+              <div style={{ color: "var(--color-muted)" }}>{String(n.body)}</div>
+            </div>
+            {!n.read_at && !n.readAt ? (
+              <button
+                className="btn btn-secondary"
+                onClick={async () => {
+                  await api("/api/notifications/read", { method: "POST", json: { id: n.id } });
+                  const r = await api<{ items: Array<Record<string, unknown>>; total: number }>("/api/notifications?page=1");
+                  setData(r);
+                }}
+              >
+                Mark read
+              </button>
+            ) : (
+              <span className="badge">Read</span>
+            )}
           </div>
         )} />
       </div>
