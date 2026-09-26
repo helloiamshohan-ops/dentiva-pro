@@ -7,11 +7,11 @@
 
 ## Current phase
 
-**IMPLEMENTATION / TEST** — visit procedures UI, plan status, notification mark-read, ICO container.
+**IMPLEMENTATION / TEST** — IPC `api:call` shares the HTTP route table.
 
 ## Current subphase
 
-Typecheck, lint, and 43 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
+Typecheck, lint, and 47 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
 
 ## Current objective
 
@@ -20,7 +20,7 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 ## Repository ground truth
 
 - Branch: `arena/01a0dbe6-dentiva-pro`
-- Last pushed before this pass: `7dde766`
+- Last pushed before this pass: `fe76119`
 
 ## Environment
 
@@ -36,26 +36,27 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 - [x] Ctrl+S / Ctrl+Shift+P, invoice adjustments, audit log, clinic inactivity minutes
 - [x] Visit procedures (optional; never auto-invoice), plan status select, notification mark-read
 - [x] `resources/icons/icon.ico` is an ICO container wrapping a PNG (not raw PNG magic)
-- [x] Tests (43 passing on this host)
+- [x] IPC `api:call` dispatches `METHOD /api/...` (and named `clinic.get` / `clinic.update` / `dashboard` / `search`) through the same handlers as HTTP; renderer uses `window.dentivaDesktop` when present
+- [x] Tests (47 passing on this host)
 - [ ] Windows package / signed installer
 
 ## Verified requirements
 
 - `npx tsc --noEmit -p tsconfig.json` — green (Electron `src/main` + `src/preload` excluded)
 - `npx eslint . --ext .ts,.tsx --max-warnings 0` — green
-- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 11 files, 43 tests passed
+- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 12 files, 47 tests passed
 
 **Not verified:** Windows install/uninstall, NSIS, code signing, Electron packaged runtime, 100K-patient scale, Windows ICO rendering / electron-builder icon ingest.
 
 ## Test results
 
-11 files / 43 tests passed, including visit procedures without invoice and plan status change without invoice.
+12 files / 47 tests passed, including IPC dispatch (named + HTTP-style routes, unknown-route rejection, visit procedures without invoice).
 
 ## Known defects
 
 - Electron binary missing; desktop packaging cannot run here.
-- Electron IPC `api:call` dispatch remains a stub; packaged app uses loopback HTTP.
 - ICO is a single PNG-in-ICO wrapper; not validated on Windows.
+- Packaged Electron still starts loopback HTTP for file:// fallback; renderer prefers IPC when the preload bridge exists.
 
 ## Blocked items
 
@@ -65,14 +66,13 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Exact unfinished task
 
-IPC `api:call` full route dispatch (share HTTP handlers). Windows packaging when the environment allows.
+Windows packaging when the environment allows. Do not retry Electron download.
 
 ## Exact next action
 
 1. Keep tests/typecheck/lint green.
 2. Commit and push `arena/01a0dbe6-dentiva-pro`.
-3. Implement IPC dispatch using the HTTP route table (do not retry Electron download).
-4. Do not claim WINDOWS VALIDATED / SIGNED / PRODUCTION READY.
+3. Do not claim WINDOWS VALIDATED / SIGNED / PRODUCTION READY.
 
 ## Recovery instructions
 

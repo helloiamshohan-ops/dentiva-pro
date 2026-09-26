@@ -2,6 +2,14 @@ import type { SessionInfo } from "../shared/types.ts";
 
 const TOKEN_KEY = "dentiva.token";
 
+declare global {
+  interface Window {
+    dentivaDesktop?: {
+      invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+    };
+  }
+}
+
 export class ApiError extends Error {
   code: string;
   details?: unknown;
@@ -20,6 +28,17 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+function desktopBridge(): Window["dentivaDesktop"] | undefined {
+  return typeof window !== "undefined" ? window.dentivaDesktop : undefined;
+}
+
+function blobFromIpc(result: { data: string; mime: string }): Blob {
+  const binary = atob(result.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: result.mime || "application/octet-stream" });
+}
+
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getToken();
@@ -28,6 +47,24 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   if (init.json !== undefined) {
     headers.set("Content-Type", "application/json");
     body = JSON.stringify(init.json);
+  }
+  const method = String(init.method || "GET").toUpperCase();
+  const url = new URL(path, "http://dentiva.local");
+  const desktop = desktopBridge();
+  if (desktop) {
+    try {
+      const result = await desktop.invoke("api:call", token, `${method} ${url.pathname}`, {
+        body: init.json !== undefined ? init.json : {},
+        query: Object.fromEntries(url.searchParams),
+      });
+      if (result && typeof result === "object" && (result as { $binary?: boolean }).$binary) {
+        return blobFromIpc(result as { data: string; mime: string }) as T;
+      }
+      return result as T;
+    } catch (err) {
+      const e = err as { message?: string; code?: string; details?: unknown };
+      throw new ApiError(e.message || "The request could not be completed.", e.code || "INTERNAL", e.details);
+    }
   }
   const origin = typeof window !== "undefined" && window.location.protocol === "file:" ? "http://127.0.0.1:4780" : "";
   const res = await fetch(`${origin}${path}`, { ...init, headers, body });

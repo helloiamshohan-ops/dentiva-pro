@@ -50,7 +50,7 @@ function readBody(req: http.IncomingMessage): Promise<unknown> {
 }
 
 export function createApiServer(app: DentivaApp, host = "0.0.0.0", port = 4780): http.Server {
-  const routes = buildRoutes();
+  const routes = getRoutes();
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -373,6 +373,109 @@ function buildRoutes(): Map<string, Handler> {
   });
 
   return r;
+}
+
+let routeCache: Map<string, Handler> | null = null;
+
+export function getRoutes(): Map<string, Handler> {
+  if (!routeCache) routeCache = buildRoutes();
+  return routeCache;
+}
+
+export function listApiRoutes(): string[] {
+  return [...getRoutes().keys()].sort();
+}
+
+export function parseApiRoute(route: string): { method: string; pathname: string } | null {
+  const m = /^(GET|POST|PUT|PATCH|DELETE)\s+(\/\S+)$/i.exec(route.trim());
+  if (!m || !m[1] || !m[2]) return null;
+  return { method: m[1].toUpperCase(), pathname: m[2].split("?")[0] || m[2] };
+}
+
+function asQuery(input: unknown): URLSearchParams {
+  if (input instanceof URLSearchParams) return input;
+  const q = new URLSearchParams();
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      if (v != null) q.set(k, String(v));
+    }
+  }
+  return q;
+}
+
+export async function invokeApi(
+  app: DentivaApp,
+  opts: {
+    method: string;
+    pathname: string;
+    token?: string;
+    actor?: Actor | null;
+    body?: unknown;
+    query?: URLSearchParams | Record<string, string>;
+  },
+): Promise<unknown> {
+  const handler = getRoutes().get(`${opts.method.toUpperCase()} ${opts.pathname}`);
+  if (!handler) throw new AppError("NOT_FOUND", "Unknown request.");
+
+  let actor: Actor | null;
+  if (opts.actor !== undefined) {
+    actor = opts.actor;
+  } else {
+    const publicPath = opts.pathname.startsWith("/api/auth/") || opts.pathname === "/api/meta/setup";
+    const token = opts.token || "";
+    if (!publicPath) {
+      actor = app.auth.resolve(token);
+    } else if (token) {
+      try {
+        actor = app.auth.resolve(token);
+      } catch {
+        actor = null;
+      }
+    } else {
+      actor = null;
+    }
+  }
+
+  return handler({ app, actor, body: opts.body ?? {}, query: asQuery(opts.query) });
+}
+
+const NAMED_IPC_ROUTES: Record<string, string> = {
+  "clinic.get": "GET /api/clinic",
+  "clinic.update": "PUT /api/clinic",
+  dashboard: "GET /api/dashboard",
+  search: "GET /api/search",
+};
+
+export function serializeIpcResult(result: unknown): unknown {
+  if (result && typeof result === "object" && (result as { $binary?: boolean }).$binary) {
+    const bin = result as { $binary: boolean; data: Buffer; filename: string; mime: string };
+    return {
+      $binary: true,
+      data: Buffer.isBuffer(bin.data) ? bin.data.toString("base64") : String(bin.data),
+      filename: bin.filename,
+      mime: bin.mime,
+    };
+  }
+  return result;
+}
+
+export async function invokeIpc(app: DentivaApp, token: string | undefined, route: string, payload: unknown): Promise<unknown> {
+  const httpRoute = NAMED_IPC_ROUTES[route] || route;
+  const parsed = parseApiRoute(httpRoute);
+  if (!parsed) throw new AppError("NOT_FOUND", "Unknown request.");
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const hasEnvelope = typeof payload === "object" && payload !== null && ("body" in p || "query" in p);
+  const body = hasEnvelope ? (p.body ?? {}) : p;
+  const query = asQuery(hasEnvelope ? p.query : undefined);
+  if (route === "search" && !query.get("q")) query.set("q", String(p.q ?? ""));
+  const result = await invokeApi(app, {
+    method: parsed.method,
+    pathname: parsed.pathname,
+    token,
+    body,
+    query,
+  });
+  return serializeIpcResult(result);
 }
 
 function must(actor: Actor | null): Actor {

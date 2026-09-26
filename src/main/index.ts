@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DentivaApp, defaultDataDir } from "../core/app.ts";
 import { toUserError, isAppError } from "../core/errors.ts";
 import { APP_NAME } from "../shared/constants.ts";
-import { createApiServer } from "../server/http.ts";
+import { createApiServer, invokeIpc } from "../server/http.ts";
 
 app.commandLine.appendSwitch("js-flags", "--experimental-sqlite");
 
@@ -99,11 +99,7 @@ function registerIpc(): void {
   ipcMain.handle("auth:unlock", (_e, token: string, password: string) => wrap(() => getApp().auth.unlock(token, password)));
 
   ipcMain.handle("api:call", (_e, token: string, route: string, payload: unknown) =>
-    wrap(async () => {
-      const a = getApp();
-      const actor = ["auth:login", "auth:bootstrap", "meta:setup"].includes(route) ? null : a.auth.resolve(token);
-      return dispatch(a, actor, route, payload);
-    }),
+    wrap(() => invokeIpc(getApp(), token, route, payload)),
   );
 
   ipcMain.handle("dialog:openBackup", async () => {
@@ -123,26 +119,6 @@ function registerIpc(): void {
     });
     return result.canceled ? null : result.filePath ?? null;
   });
-}
-
-async function dispatch(app: DentivaApp, actor: ReturnType<DentivaApp["auth"]["resolve"]> | null, route: string, payload: unknown): Promise<unknown> {
-  const p = (payload ?? {}) as Record<string, unknown>;
-  const must = () => {
-    if (!actor) throw new Error("Please sign in to continue.");
-    return actor;
-  };
-  switch (route) {
-    case "clinic.get":
-      return app.clinic.get();
-    case "clinic.update":
-      return app.clinic.update(must(), p);
-    case "dashboard":
-      return app.ops.dashboard(must());
-    case "search":
-      return app.ops.search(must(), String(p.q ?? ""));
-    default:
-      return { error: "Unknown route" };
-  }
 }
 
 const gotLock = app.requestSingleInstanceLock();

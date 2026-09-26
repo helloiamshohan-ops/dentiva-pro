@@ -10,7 +10,7 @@ Renderer never receives Node.js, filesystem, or SQL access. Privileged work is p
 | auth:logout | Destroy session | yes | — | no | medium |
 | auth:lock / unlock | App lock | yes | — | no | high |
 | auth:session | Session read | yes | — | no | medium |
-| api:call | Domain operations | yes | per-route | no | high |
+| api:call | Domain operations (`METHOD /api/...` or named `clinic.get` / `dashboard` / `search`) using the same handlers as HTTP | yes (except `/api/auth/*` and `/api/meta/setup`) | per-route | no | high |
 | documents PDF HTTP | Generate PDF | yes | clinical/billing.read | yes (temp) | high |
 | backup:create | Backup archive | yes | backup.create | yes | high |
 | backup:restore | Restore archive | yes | backup.restore | yes | high |
