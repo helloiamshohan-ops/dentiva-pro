@@ -8,6 +8,7 @@
 | Ctrl+Shift+V | New visit |
 | Ctrl+Shift+A | New appointment |
 | Ctrl+Shift+I | New invoice |
+| Ctrl+Shift+P | Receive payment (billing) |
 | Ctrl+S | Save (focused form) |
 | Escape | Close dialog / palette |
 | Ctrl+L | Lock application |

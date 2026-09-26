@@ -123,4 +123,29 @@ describe("finance and inventory", () => {
     const q = app.schedule.enqueue(actor, found.id);
     expect(q.serial).toBe(1);
   });
+
+  it("records an adjustment without rewriting issued invoice lines", async () => {
+    const ctx = await bootApp();
+    apps.push(ctx);
+    const { app, actor } = ctx;
+    const patient = app.patients.create(actor, { fullName: "Adj Case", ignoreDuplicateWarning: true });
+    const inv = app.billing.createInvoice(actor, {
+      patientId: patient.id,
+      issuedAt: new Date().toISOString(),
+      issue: true,
+      lines: [{ description: "Crown", quantity: 1, unitPricePaisa: 100000, discountPaisa: 0 }],
+    });
+    expect(inv.duePaisa).toBe(100000);
+    app.billing.adjust(actor, {
+      invoiceId: inv.id,
+      patientId: patient.id,
+      amountPaisa: -20000,
+      adjustedAt: new Date().toISOString(),
+      reason: "Courtesy discount after issue",
+    });
+    const after = app.billing.getInvoice(actor, inv.id);
+    expect(after.totalPaisa).toBe(100000);
+    expect(after.duePaisa).toBe(80000);
+    expect(after.lines[0]?.description).toBe("Crown");
+  });
 });

@@ -275,9 +275,19 @@ function Shell({ session, setSession }: { session: SessionInfo; setSession: (s: 
   const [palette, setPalette] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  const [idleMinutes, setIdleMinutes] = useState(15);
+  useEffect(() => {
+    void api<{ inactivityTimeoutMinutes?: number }>("/api/clinic")
+      .then((c) => {
+        const n = Number(c.inactivityTimeoutMinutes);
+        if (Number.isFinite(n) && n > 0) setIdleMinutes(n);
+      })
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     let idle = 0;
-    const timeoutMs = 15 * 60 * 1000;
+    const timeoutMs = idleMinutes * 60 * 1000;
     const bump = () => {
       idle = Date.now();
     };
@@ -294,7 +304,7 @@ function Shell({ session, setSession }: { session: SessionInfo; setSession: (s: 
       window.removeEventListener("keydown", bump);
       window.removeEventListener("pointerdown", bump);
     };
-  }, [setSession]);
+  }, [setSession, idleMinutes]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -322,6 +332,16 @@ function Shell({ session, setSession }: { session: SessionInfo; setSession: (s: 
       if (meta && e.shiftKey && e.key.toLowerCase() === "i") {
         e.preventDefault();
         go("billing/new");
+      }
+      if (meta && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        go("billing");
+      }
+      if (meta && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        const el = document.activeElement;
+        const form = el instanceof HTMLElement ? el.closest("form") : null;
+        if (form instanceof HTMLFormElement) form.requestSubmit();
       }
       if (meta && e.key.toLowerCase() === "l") {
         e.preventDefault();
@@ -1738,6 +1758,32 @@ function InvoiceView({ id }: { id: string }) {
               Void invoice
             </button>
           ) : null}
+          {String(inv.status) !== "void" ? (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 12 }}
+              onClick={async () => {
+                const reason = window.prompt("Adjustment reason");
+                if (!reason) return;
+                const raw = window.prompt("Adjustment (BDT, negative reduces due)", "0");
+                if (!raw) return;
+                await api("/api/adjustments", {
+                  method: "POST",
+                  json: {
+                    invoiceId: id,
+                    patientId: inv.patientId,
+                    amountPaisa: Math.round(Number(raw) * 100),
+                    adjustedAt: nowIso(),
+                    reason,
+                  },
+                });
+                toast("Adjustment recorded. The original invoice lines were not rewritten.");
+                load();
+              }}
+            >
+              Adjustment
+            </button>
+          ) : null}
         </div>
       </div>
     </>
@@ -2102,6 +2148,7 @@ function Settings({ session }: { session: SessionInfo }) {
   const [csv, setCsv] = useState("");
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; mapping: Record<string, string>; issues: string[] } | null>(null);
   const [restorePath, setRestorePath] = useState("");
+  const [audit, setAudit] = useState<Array<Record<string, unknown>>>([]);
   useEffect(() => {
     void api<Record<string, string>>("/api/clinic").then(setClinic);
     void api<Array<Record<string, unknown>>>("/api/staff").then(setStaff).catch(() => setStaff([]));
@@ -2125,11 +2172,19 @@ function Settings({ session }: { session: SessionInfo }) {
           {["clinicName", "address", "phone", "email", "dentistName", "dentistQualifications", "dentistRegistration"].map((k) => (
             <Field key={k} label={k} value={String(clinic[k] || "")} onChange={(v) => setClinic({ ...clinic, [k]: v })} />
           ))}
+          <Field
+            label="Inactivity lock (minutes)"
+            value={String(clinic.inactivityTimeoutMinutes || "15")}
+            onChange={(v) => setClinic({ ...clinic, inactivityTimeoutMinutes: v })}
+          />
           <div className="row" style={{ gridColumn: "1 / -1" }}>
             <button
               className="btn btn-primary"
               onClick={async () => {
-                await api("/api/clinic", { method: "PUT", json: clinic });
+                await api("/api/clinic", {
+                  method: "PUT",
+                  json: { ...clinic, inactivityTimeoutMinutes: Number(clinic.inactivityTimeoutMinutes || 15) },
+                });
                 toast("Settings saved.");
               }}
             >
@@ -2328,6 +2383,37 @@ function Settings({ session }: { session: SessionInfo }) {
           >
             Restore backup
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={async () => {
+              const r = await api<{ items: Array<Record<string, unknown>> }>("/api/audit?page=1");
+              setAudit(r.items);
+            }}
+          >
+            Load audit log
+          </button>
+          {audit.length > 0 && (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Entity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit.map((a) => (
+                  <tr key={String(a.id)}>
+                    <td>{String(a.at)}</td>
+                    <td>{String(a.actor_name || a.actorName || "")}</td>
+                    <td>{String(a.action)}</td>
+                    <td>{String(a.entity_type || a.entityType || "")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           <h3>Import patients</h3>
           <label className="field">
             <span>CSV file</span>
