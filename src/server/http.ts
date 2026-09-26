@@ -232,6 +232,14 @@ function buildRoutes(): Map<string, Handler> {
   });
   add("GET", "/api/chairs", ({ app }) => app.schedule.listChairs());
   add("GET", "/api/rooms", ({ app }) => app.schedule.listRooms());
+  add("POST", "/api/chairs", ({ app, actor, body }) => {
+    const b = body as { id?: string; name: string; active?: boolean };
+    return app.schedule.saveChair(must(actor), b.id ?? null, b.name, b.active !== false);
+  });
+  add("POST", "/api/rooms", ({ app, actor, body }) => {
+    const b = body as { id?: string; name: string; active?: boolean };
+    return app.schedule.saveRoom(must(actor), b.id ?? null, b.name, b.active !== false);
+  });
 
   add("GET", "/api/queue", ({ app, actor, query }) => app.schedule.listQueue(must(actor), query.get("date") || undefined));
   add("POST", "/api/queue", ({ app, actor, body }) => {
@@ -285,6 +293,7 @@ function buildRoutes(): Map<string, Handler> {
     const b = body as { page?: number; pageSize?: number };
     return app.inventory.listPurchases(must(actor), b.page, b.pageSize);
   });
+  add("POST", "/api/purchases/pay", ({ app, actor, body }) => app.inventory.payPurchase(must(actor), body));
   add("GET", "/api/inventory/expiring", ({ app, actor }) => app.inventory.expiring(must(actor)));
 
   add("GET", "/api/search", ({ app, actor, query }) => app.ops.search(must(actor), query.get("q") || ""));

@@ -7,20 +7,20 @@
 
 ## Current phase
 
-**IMPLEMENTATION / TEST** — commercial workflows, UI depth, extra integration tests.
+**IMPLEMENTATION / TEST** — remaining commercial UI/ops: purchases pay, chairs/rooms, follow-ups, referrals, attachment MIME.
 
 ## Current subphase
 
-Typecheck, lint, and 37 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
+Typecheck, lint, and 40 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
 
 ## Current objective
 
-Keep filling remaining UI/ops depth without regressing tests. Package Windows x64 only when Electron can be installed.
+Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Repository ground truth
 
 - Branch: `arena/01a0dbe6-dentiva-pro`
-- Last committed implementation: `9dca4a7` plus follow-on UI/test work in this continue pass
+- Last pushed: `76d961d` plus this continue pass
 
 ## Environment
 
@@ -30,34 +30,24 @@ Keep filling remaining UI/ops depth without regressing tests. Package Windows x6
 - Electron npm binary: not installed. Do not retry the same download.
 - Code signing: not present
 
-## Architecture state
-
-Unchanged: Electron + React + SQLite (`node:sqlite`), integer paisa, HTTP API for preview and packaged loopback.
-
 ## Completed requirements
 
-- [x] Core domains (auth, patients, clinical, billing, schedule, inventory, backup, import, PDFs)
-- [x] Patient 360, queue, appointments, billing, inventory purchases/suppliers
-- [x] Treatment catalog editor, invoice catalog picker (does not auto-bill)
-- [x] Void / refund UI, attachment download, patient resolve-by-code
-- [x] Tests (37 passing on this host)
+- [x] Core domains, Patient 360, billing, inventory purchases + pay, catalog
+- [x] Follow-ups, referrals, chairs/rooms editor, attachment MIME allow-list
+- [x] Tests (40 passing on this host)
 - [ ] Windows package / signed installer
 
 ## Verified requirements
 
 - `npx tsc --noEmit -p tsconfig.json` — green (Electron `src/main` + `src/preload` excluded)
 - `npx eslint . --ext .ts,.tsx --max-warnings 0` — green
-- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 10 files, 37 tests passed
+- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 11 files, 40 tests passed
 
 **Not verified:** Windows install/uninstall, NSIS, code signing, Electron packaged runtime, 100K-patient scale.
 
-## Tests executed
-
-`NODE_OPTIONS=--experimental-sqlite npx vitest run`
-
 ## Test results
 
-10 files / 37 tests passed (~6.6s), including new finance-inventory coverage (overpayment, issued rewrite, void, purchase stock, last admin, CSV import, resolve-by-code).
+11 files / 40 tests passed, including clinical-ops (follow-up/referral, MIME reject, purchase pay, chairs).
 
 ## Known defects
 
@@ -73,7 +63,7 @@ Unchanged: Electron + React + SQLite (`node:sqlite`), integer paisa, HTTP API fo
 
 ## Exact unfinished task
 
-Purchase-order payment status UI, chairs/rooms editor, follow-up/referral screens, attachment MIME allow-list messaging, Windows packaging when the environment allows.
+Windows packaging when the environment allows; optional remaining polish (appointment dentist/chair picker, purchase supplier link on receive form).
 
 ## Exact next action
 

@@ -282,6 +282,34 @@ export class InventoryService {
     return { ...(purchase as object), lines };
   }
 
+  payPurchase(actor: Actor, input: unknown) {
+    requirePermission(actor, "inventory.write");
+    const data = parse(
+      z.object({
+        id: z.string().min(8),
+        amountPaisa: z.number().int().positive("Enter a payment amount greater than zero."),
+      }),
+      input,
+    );
+    immediate(this.core.db, () => {
+      const row = this.core.db.prepare("SELECT id, total_paisa, paid_paisa FROM purchases WHERE id = ?").get(data.id) as
+        | { id: string; total_paisa: number; paid_paisa: number }
+        | undefined;
+      if (!row) throw new AppError("NOT_FOUND", "Purchase was not found.");
+      const due = row.total_paisa - row.paid_paisa;
+      if (data.amountPaisa > due) {
+        throw new AppError("FINANCIAL", "Purchase payment is greater than the amount due. No financial changes were made.", {
+          details: { due, amount: data.amountPaisa },
+        });
+      }
+      const paid = row.paid_paisa + data.amountPaisa;
+      const status = paid >= row.total_paisa ? "paid" : "partial";
+      this.core.db.prepare("UPDATE purchases SET paid_paisa = ?, status = ? WHERE id = ?").run(paid, status, row.id);
+      audit(this.core.db, actor, "purchase_pay", "purchase", row.id, { amount: data.amountPaisa, status });
+    });
+    return this.getPurchase(actor, data.id);
+  }
+
   listPurchases(actor: Actor, page = 1, pageSize = 50) {
     requirePermission(actor, "inventory.read");
     const p = parse(paginationSchema, { page, pageSize });

@@ -688,7 +688,7 @@ function Patient360({ id, tab }: { id: string; tab?: string }) {
     void api<Record<string, unknown>>(`/api/patients/medical?id=${id}`).then(setMedical);
   }, [id]);
   if (!p) return <div className="skel" style={{ height: 120 }} />;
-  const tabs = ["overview", "timeline", "visits", "chart", "prescriptions", "plans", "appointments", "billing", "attachments", "notes"];
+  const tabs = ["overview", "timeline", "visits", "chart", "prescriptions", "plans", "appointments", "billing", "followups", "attachments", "notes"];
   return (
     <>
       <div className="card" style={{ marginBottom: 16 }}>
@@ -731,6 +731,7 @@ function Patient360({ id, tab }: { id: string; tab?: string }) {
       {active === "plans" && <Plans patientId={id} />}
       {active === "appointments" && <ApptList patientId={id} />}
       {active === "billing" && <PatientBilling patientId={id} />}
+      {active === "followups" && <FollowupsReferrals patientId={id} />}
       {active === "attachments" && <AttachList patientId={id} />}
       {active === "notes" && <div className="card">{String(p.notes || "No notes.")}</div>}
       {active === "edit" && (
@@ -1134,6 +1135,99 @@ function PatientBilling({ patientId }: { patientId: string }) {
   );
 }
 
+function FollowupsReferrals({ patientId }: { patientId: string }) {
+  const toast = React.useContext(ToastCtx);
+  const [followups, setFollowups] = useState<Array<Record<string, unknown>>>([]);
+  const [referrals, setReferrals] = useState<Array<Record<string, unknown>>>([]);
+  const [due, setDue] = useState(todayIsoDate());
+  const [reason, setReason] = useState("");
+  const [referredTo, setReferredTo] = useState("");
+  const [refReason, setRefReason] = useState("");
+  const load = () => {
+    void api<{ items: Array<Record<string, unknown>> }>("/api/followups/list", { method: "POST", json: { patientId } }).then((r) => setFollowups(r.items));
+    void api<Array<Record<string, unknown>>>(`/api/referrals?patientId=${patientId}`).then(setReferrals);
+  };
+  useEffect(() => {
+    load();
+  }, [patientId]);
+  return (
+    <div className="grid grid-2">
+      <div className="card">
+        <h3>Follow-ups</h3>
+        <Field label="Due" type="date" value={due} onChange={setDue} />
+        <Field label="Reason" value={reason} onChange={setReason} />
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 8 }}
+          onClick={async () => {
+            await api("/api/followups", {
+              method: "POST",
+              json: { patientId, dueAt: new Date(`${due}T09:00:00+06:00`).toISOString(), reason },
+            });
+            toast("Follow-up recorded.");
+            setReason("");
+            load();
+          }}
+        >
+          Schedule follow-up
+        </button>
+        <SimpleList
+          rows={followups.map((f) => ({ ...f, id: String(f.id) }))}
+          empty="No follow-ups."
+          render={(f) => (
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span>
+                {String(f.due_at || f.dueAt)} · {String(f.reason || "Follow-up")} · {String(f.status)}
+              </span>
+              {String(f.status) !== "completed" ? (
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    await api("/api/followups/complete", { method: "POST", json: { id: f.id } });
+                    load();
+                  }}
+                >
+                  Complete
+                </button>
+              ) : null}
+            </div>
+          )}
+        />
+      </div>
+      <div className="card">
+        <h3>Referrals</h3>
+        <Field label="Referred to" value={referredTo} onChange={setReferredTo} />
+        <Field label="Reason" value={refReason} onChange={setRefReason} />
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 8 }}
+          onClick={async () => {
+            await api("/api/referrals", {
+              method: "POST",
+              json: { patientId, referredTo, reason: refReason, referredAt: nowIso() },
+            });
+            toast("Referral recorded.");
+            setReferredTo("");
+            setRefReason("");
+            load();
+          }}
+        >
+          Add referral
+        </button>
+        <SimpleList
+          rows={referrals.map((r) => ({ ...r, id: String(r.id) }))}
+          empty="No referrals."
+          render={(r) => (
+            <div>
+              {String(r.referred_to || r.referredTo || "Referral")} · {String(r.reason || "")}
+            </div>
+          )}
+        />
+      </div>
+    </div>
+  );
+}
+
 function AttachList({ patientId }: { patientId: string }) {
   const toast = React.useContext(ToastCtx);
   const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
@@ -1144,25 +1238,31 @@ function AttachList({ patientId }: { patientId: string }) {
   return (
     <div className="card">
       <h3>Attachments</h3>
+      <p style={{ color: "var(--color-muted)", marginBottom: 8 }}>JPEG, PNG, WebP, GIF, PDF, text, or DOCX. 25 MB maximum.</p>
       <input
         type="file"
         aria-label="Add attachment"
+        accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.docx,image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain"
         onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
-          const buf = await file.arrayBuffer();
-          const bytes = new Uint8Array(buf);
-          let bin = "";
-          bytes.forEach((b) => {
-            bin += String.fromCharCode(b);
-          });
-          await api("/api/attachments", {
-            method: "POST",
-            json: { entityType: "patient", entityId: patientId, filename: file.name, mime: file.type, dataBase64: btoa(bin) },
-          });
-          toast("Attachment stored.");
+          try {
+            const buf = await file.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let bin = "";
+            bytes.forEach((b) => {
+              bin += String.fromCharCode(b);
+            });
+            await api("/api/attachments", {
+              method: "POST",
+              json: { entityType: "patient", entityId: patientId, filename: file.name, mime: file.type, dataBase64: btoa(bin) },
+            });
+            toast("Attachment stored.");
+            load();
+          } catch (ex) {
+            toast(ex instanceof Error ? ex.message : "The file was not stored.");
+          }
           e.target.value = "";
-          load();
         }}
       />
       {!items.length ? (
@@ -1730,6 +1830,8 @@ function Inventory() {
                 <th>Number</th>
                 <th>When</th>
                 <th className="num">Total</th>
+                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -1738,6 +1840,29 @@ function Inventory() {
                   <td>{String(p.number)}</td>
                   <td>{String(p.purchased_at || p.purchasedAt)}</td>
                   <td className="num">{formatMoney(Number(p.total_paisa ?? p.totalPaisa ?? 0))}</td>
+                  <td>
+                    <span className="badge">{String(p.status)}</span> · paid {formatMoney(Number(p.paid_paisa ?? p.paidPaisa ?? 0))}
+                  </td>
+                  <td>
+                    {String(p.status) !== "paid" ? (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={async () => {
+                          const due = Number(p.total_paisa ?? p.totalPaisa ?? 0) - Number(p.paid_paisa ?? p.paidPaisa ?? 0);
+                          const raw = window.prompt("Pay amount (BDT)", (due / 100).toFixed(2));
+                          if (!raw) return;
+                          await api("/api/purchases/pay", {
+                            method: "POST",
+                            json: { id: p.id, amountPaisa: Math.round(Number(raw) * 100) },
+                          });
+                          toast("Purchase payment recorded.");
+                          load();
+                        }}
+                      >
+                        Pay
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1906,7 +2031,11 @@ function Notifications() {
 
 function Settings({ session }: { session: SessionInfo }) {
   const toast = React.useContext(ToastCtx);
-  const [tab, setTab] = useState<"clinic" | "staff" | "catalog" | "data" | "security">("clinic");
+  const [tab, setTab] = useState<"clinic" | "staff" | "catalog" | "rooms" | "data" | "security">("clinic");
+  const [chairs, setChairs] = useState<Array<Record<string, unknown>>>([]);
+  const [rooms, setRooms] = useState<Array<Record<string, unknown>>>([]);
+  const [chairName, setChairName] = useState("");
+  const [roomName, setRoomName] = useState("");
   const [treatments, setTreatments] = useState<Array<Record<string, unknown>>>([]);
   const [tx, setTx] = useState({ name: "", category: "Exam", price: "0" });
   const [clinic, setClinic] = useState<Record<string, string> | null>(null);
@@ -1921,13 +2050,15 @@ function Settings({ session }: { session: SessionInfo }) {
     void api<Record<string, string>>("/api/clinic").then(setClinic);
     void api<Array<Record<string, unknown>>>("/api/staff").then(setStaff).catch(() => setStaff([]));
     void api<Array<Record<string, unknown>>>("/api/treatments").then(setTreatments).catch(() => setTreatments([]));
+    void api<Array<Record<string, unknown>>>("/api/chairs").then(setChairs).catch(() => setChairs([]));
+    void api<Array<Record<string, unknown>>>("/api/rooms").then(setRooms).catch(() => setRooms([]));
   }, []);
   if (!clinic) return <div className="skel" style={{ height: 120 }} />;
   return (
     <>
       <PageHead title="Settings" sub={`Signed in as ${session.name}`} />
       <div className="tabs" role="tablist">
-        {(["clinic", "staff", "catalog", "data", "security"] as const).map((t) => (
+        {(["clinic", "staff", "catalog", "rooms", "data", "security"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
             {t}
           </button>
@@ -2067,6 +2198,44 @@ function Settings({ session }: { session: SessionInfo }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {tab === "rooms" && (
+        <div className="grid grid-2">
+          <div className="card">
+            <h3>Chairs</h3>
+            <Field label="Chair name" value={chairName} onChange={setChairName} />
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: 8 }}
+              onClick={async () => {
+                await api("/api/chairs", { method: "POST", json: { name: chairName } });
+                setChairName("");
+                setChairs(await api("/api/chairs"));
+                toast("Chair saved.");
+              }}
+            >
+              Add chair
+            </button>
+            <SimpleList rows={chairs.map((c) => ({ ...c, id: String(c.id) }))} empty="No chairs." render={(c) => <div>{String(c.name)}</div>} />
+          </div>
+          <div className="card">
+            <h3>Rooms</h3>
+            <Field label="Room name" value={roomName} onChange={setRoomName} />
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: 8 }}
+              onClick={async () => {
+                await api("/api/rooms", { method: "POST", json: { name: roomName } });
+                setRoomName("");
+                setRooms(await api("/api/rooms"));
+                toast("Room saved.");
+              }}
+            >
+              Add room
+            </button>
+            <SimpleList rows={rooms.map((r) => ({ ...r, id: String(r.id) }))} empty="No rooms." render={(r) => <div>{String(r.name)}</div>} />
+          </div>
         </div>
       )}
       {tab === "data" && (

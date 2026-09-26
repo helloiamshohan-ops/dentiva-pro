@@ -39,6 +39,7 @@ export class AttachmentService {
     if (data.length > 25 * 1024 * 1024) {
       throw new AppError("VALIDATION", "Attachments larger than 25 MB cannot be stored.");
     }
+    const resolvedMime = resolveAllowedMime(filename, mime);
     const safe = sanitizeFilename(filename);
     const stored = `${newId()}_${safe}`;
     const dir = resolveInside(this.core.paths.attachmentsDir, entityType, entityId);
@@ -51,7 +52,7 @@ export class AttachmentService {
         `INSERT INTO attachments (id, entity_type, entity_id, filename, stored_name, mime, size_bytes, created_at, created_by)
          VALUES (?,?,?,?,?,?,?,?,?)`,
       )
-      .run(id, entityType, entityId, safe, stored, mime ?? null, data.length, this.core.clock().toISOString(), actor.staffId);
+      .run(id, entityType, entityId, safe, stored, resolvedMime, data.length, this.core.clock().toISOString(), actor.staffId);
     audit(this.core.db, actor, "attachment_add", "attachment", id, { entityType, entityId, filename: safe });
     return { id, filename: safe, sizeBytes: data.length };
   }
@@ -77,4 +78,27 @@ export class AttachmentService {
 }
 
 export { ALLOWED_MIME };
+
+function resolveAllowedMime(filename: string, mime?: string): string {
+  const given = (mime || "").toLowerCase().split(";")[0]?.trim() || "";
+  if (given && ALLOWED_MIME.has(given)) return given;
+  const ext = filename.toLowerCase().split(".").pop() || "";
+  const byExt: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    pdf: "application/pdf",
+    txt: "text/plain",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  };
+  const inferred = byExt[ext];
+  if (inferred) return inferred;
+  throw new AppError(
+    "VALIDATION",
+    "That file type is not allowed. Store JPEG, PNG, WebP, GIF, PDF, plain text, or DOCX only. The file was not saved.",
+  );
+}
+
 void path;
