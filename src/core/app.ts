@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { APP_NAME, APP_VERSION } from "../shared/constants.ts";
-import { closeDatabase, openDatabase, type Sqlite } from "./db/connection.ts";
+import { closeDatabase, integrityCheck, openDatabase, type Sqlite } from "./db/connection.ts";
 import { migrate } from "./db/migrate.ts";
 import { seedDefaults } from "./db/seed.ts";
 import type { Actor, AppPaths, Core } from "./context.ts";
@@ -45,6 +45,7 @@ export function buildPaths(dataDir: string): AppPaths {
     backupDir: path.join(dataDir, "backups"),
     tempDir: path.join(dataDir, "tmp"),
     recoveryMarker: path.join(dataDir, "restore-in-progress.json"),
+    crashMarker: path.join(dataDir, "unclean-shutdown.json"),
   };
 }
 
@@ -73,6 +74,18 @@ export class DentivaApp {
     const db = openDatabase({ filePath: this.paths.dbPath });
     migrate(db);
     seedDefaults(db);
+    if (fs.existsSync(this.paths.crashMarker)) {
+      const integ = integrityCheck(db);
+      if (!integ.ok) {
+        closeDatabase(db);
+        throw new AppError(
+          "INTEGRITY",
+          "The database failed integrity checks after an unclean shutdown. Restore a backup. No further writes were made.",
+          { details: { detail: integ.detail } },
+        );
+      }
+    }
+    fs.writeFileSync(this.paths.crashMarker, JSON.stringify({ at: clock().toISOString(), pid: process.pid }, null, 2));
     this.shared = { db, paths: this.paths, clock };
     this.auth = new AuthService(this.shared);
     this.clinic = new ClinicService(this.shared);
@@ -106,6 +119,11 @@ export class DentivaApp {
   }
 
   close(): void {
+    try {
+      fs.rmSync(this.paths.crashMarker, { force: true });
+    } catch {
+      /* ignore */
+    }
     closeDatabase(this.shared.db);
   }
 

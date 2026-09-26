@@ -46,6 +46,9 @@ Windows NSIS installer: `npm run dist:win` (requires a Windows environment or Wi
 - [Security](docs/SECURITY.md)
 - [Keyboard shortcuts](docs/KEYBOARD.md)
 - [IPC inventory](docs/IPC_INVENTORY.md)
+- [Requirement coverage](docs/REQUIREMENT_COVERAGE.md)
+- [Forensic audit](docs/FORENSIC_AUDIT.md)
+- [Release gate](docs/RELEASE_GATE.md)
 
 ## Tests
 

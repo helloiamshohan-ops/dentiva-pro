@@ -12,7 +12,7 @@ export const INVOICE_PREFIX = "INV";
 export const RECEIPT_PREFIX = "RCT";
 export const PURCHASE_PREFIX = "PO";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const PAYMENT_METHODS = [
   "cash",

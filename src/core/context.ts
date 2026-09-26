@@ -20,6 +20,7 @@ export type AppPaths = {
   backupDir: string;
   tempDir: string;
   recoveryMarker: string;
+  crashMarker: string;
 };
 
 export type Core = {

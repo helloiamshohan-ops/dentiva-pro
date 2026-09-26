@@ -211,8 +211,15 @@ export function recoverIfNeeded(paths: Core["paths"]): void {
     const raw = JSON.parse(fs.readFileSync(paths.recoveryMarker, "utf8")) as { safety: string; live: string };
     if (raw.safety && fs.existsSync(raw.safety) && raw.live) {
       fs.copyFileSync(raw.safety, raw.live);
+      const wal = `${raw.safety}-wal`;
+      const shm = `${raw.safety}-shm`;
+      if (fs.existsSync(wal)) fs.copyFileSync(wal, `${raw.live}-wal`);
+      else if (fs.existsSync(`${raw.live}-wal`)) fs.rmSync(`${raw.live}-wal`, { force: true });
+      if (fs.existsSync(shm)) fs.copyFileSync(shm, `${raw.live}-shm`);
+      else if (fs.existsSync(`${raw.live}-shm`)) fs.rmSync(`${raw.live}-shm`, { force: true });
     }
+    fs.rmSync(paths.recoveryMarker, { force: true });
   } catch {
-    /* leave marker */
+    /* leave marker for the next launch */
   }
 }

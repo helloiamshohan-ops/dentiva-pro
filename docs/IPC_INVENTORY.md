@@ -17,6 +17,6 @@ Renderer never receives Node.js, filesystem, or SQL access. Privileged work is p
 | dialog:openBackup | Native file picker | yes | backup.restore | yes | high |
 | dialog:savePdf | Native save dialog | yes | — | yes | medium |
 
-There is no generic eval/exec IPC channel.
+There is no generic eval/exec IPC channel. Preload allow-list is `PRELOAD_ALLOWED_CHANNELS` in `src/main/ipc-inventory.ts`.
 
-HTTP preview API uses the same services and the same permission checks.
+HTTP preview API uses the same services and the same permission checks (`invokeIpc` / `invokeApi`).

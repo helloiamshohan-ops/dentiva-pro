@@ -28,6 +28,7 @@
     "test:perf": "vitest run tests/performance",
     "test:e2e": "vitest run tests/e2e",
     "audit:source": "tsx scripts/source-audit.ts",
+    "hash:artifacts": "tsx scripts/hash-artifacts.ts",
     "dist:win": "electron-builder --win --x64",
     "dist:dir": "electron-builder --dir",
     "start:electron": "electron dist/main/index.js",

@@ -103,6 +103,28 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** Opens the PDF in a new window and invokes the system print dialog. Falls back to download. */
+export function printBlob(blob: Blob, filename = "document.pdf"): void {
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) {
+    downloadBlob(blob, filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
+  }
+  const tryPrint = () => {
+    try {
+      w.focus();
+      w.print();
+    } catch {
+      downloadBlob(blob, filename);
+    }
+  };
+  w.addEventListener("load", tryPrint);
+  window.setTimeout(tryPrint, 600);
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+
 export function formatMoney(paisa: number): string {
   const sign = paisa < 0 ? "-" : "";
   const abs = Math.abs(paisa);

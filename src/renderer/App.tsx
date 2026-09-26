@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { CC_FIELDS, OE_FIELDS, PAYMENT_METHOD_LABELS, ROLE_LABELS, ROLES, SHORTCUTS, ADULT_FDI, PRIMARY_FDI, TOOTH_STATES } from "../shared/constants.ts";
+import { CC_FIELDS, OE_FIELDS, PAYMENT_METHOD_LABELS, PAPER_SIZES, ROLE_LABELS, ROLES, SHORTCUTS, ADULT_FDI, PRIMARY_FDI, TOOTH_STATES } from "../shared/constants.ts";
 import type { SessionInfo } from "../shared/types.ts";
-import { api, ApiError, AuthApi, downloadBlob, formatMoney, getToken, setToken, todayIsoDate, nowIso } from "./api.ts";
+import { api, ApiError, AuthApi, downloadBlob, printBlob, formatMoney, getToken, setToken, todayIsoDate, nowIso } from "./api.ts";
 
 type Route = { name: string; id?: string; tab?: string };
 
@@ -221,7 +221,22 @@ function Field({
   return (
     <label className="field">
       <span>{label}</span>
-      <input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      <input type={type} value={value} placeholder={placeholder} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+function PaperSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="field">
+      <span>Paper size</span>
+      <select aria-label="Paper size" value={value} onChange={(e) => onChange(e.target.value)}>
+        {PAPER_SIZES.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -843,6 +858,7 @@ function VisitList({ patientId }: { patientId: string }) {
         render={(v) => (
           <div>
             <strong>{String(v.visitedAt)}</strong> — {String(v.chiefComplaint || "Visit")}
+            {v.treatmentPerformed ? <div style={{ color: "var(--color-muted)" }}>{String(v.treatmentPerformed)}</div> : null}
           </div>
         )}
       />
@@ -858,6 +874,9 @@ function VisitModal({ patientId, onClose, onSaved }: { patientId: string; onClos
     <div className="modal-backdrop" onClick={onClose}>
       <form
         className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="visit-modal-title"
         onClick={(e) => e.stopPropagation()}
         onSubmit={async (e) => {
           e.preventDefault();
@@ -884,7 +903,7 @@ function VisitModal({ patientId, onClose, onSaved }: { patientId: string; onClos
           }
         }}
       >
-        <h2>New visit</h2>
+        <h2 id="visit-modal-title">New visit</h2>
         <p style={{ color: "var(--color-muted)", marginBottom: 8 }}>Documented procedures never create invoices by themselves.</p>
         {err && <div className="alert error">{err}</div>}
         <div className="grid" style={{ gap: 10, marginTop: 12 }}>
@@ -957,6 +976,7 @@ function Chart({ patientId }: { patientId: string }) {
 function RxList({ patientId }: { patientId: string }) {
   const [data, setData] = useState<{ items: Array<Record<string, unknown>> } | null>(null);
   const [open, setOpen] = useState(false);
+  const [paper, setPaper] = useState("A4");
   const load = () => void api<{ items: Array<Record<string, unknown>> }>("/api/prescriptions/list", { method: "POST", json: { patientId } }).then(setData);
   useEffect(() => {
     load();
@@ -965,9 +985,12 @@ function RxList({ patientId }: { patientId: string }) {
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h3>Prescriptions</h3>
-        <button className="btn btn-primary" onClick={() => setOpen(true)}>
-          New prescription
-        </button>
+        <div className="row">
+          <PaperSelect value={paper} onChange={setPaper} />
+          <button className="btn btn-primary" onClick={() => setOpen(true)}>
+            New prescription
+          </button>
+        </div>
       </div>
       <SimpleList
         rows={(data?.items || []).map((r) => ({ ...r, id: String(r.id) }))}
@@ -975,15 +998,26 @@ function RxList({ patientId }: { patientId: string }) {
         render={(r) => (
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span>{String(r.prescribedAt)}</span>
-            <button
-              className="btn btn-secondary"
-              onClick={async () => {
-                const blob = await api<Blob>("/api/pdf/prescription", { method: "POST", json: { id: r.id } });
-                downloadBlob(blob, "prescription.pdf");
-              }}
-            >
-              PDF
-            </button>
+            <div className="row">
+              <button
+                className="btn btn-secondary"
+                onClick={async () => {
+                  const blob = await api<Blob>("/api/pdf/prescription", { method: "POST", json: { id: r.id, paper } });
+                  downloadBlob(blob, "prescription.pdf");
+                }}
+              >
+                PDF
+              </button>
+              <button
+                className="btn btn-tertiary"
+                onClick={async () => {
+                  const blob = await api<Blob>("/api/pdf/prescription", { method: "POST", json: { id: r.id, paper } });
+                  printBlob(blob, "prescription.pdf");
+                }}
+              >
+                Print
+              </button>
+            </div>
           </div>
         )}
       />
@@ -995,16 +1029,21 @@ function RxList({ patientId }: { patientId: string }) {
 function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: () => void; onSaved: () => void }) {
   const [cc, setCc] = useState<Record<string, boolean>>({});
   const [oe, setOe] = useState<Record<string, boolean>>({});
+  const [ccNotes, setCcNotes] = useState("");
+  const [oeNotes, setOeNotes] = useState("");
   const [re, setRe] = useState("");
   const [advice, setAdvice] = useState("");
-  const [meds, setMeds] = useState<Array<{ medicine: string; strength: string; dosage: string; frequency: string; duration: string; route: string; instructions: string }>>([
-    { medicine: "", strength: "", dosage: "", frequency: "", duration: "", route: "", instructions: "" },
+  const [meds, setMeds] = useState<Array<{ medicine: string; strength: string; dosage: string; frequency: string; duration: string; route: string; timing: string; instructions: string }>>([
+    { medicine: "", strength: "", dosage: "", frequency: "", duration: "", route: "", timing: "", instructions: "" },
   ]);
   const [err, setErr] = useState("");
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <form
         className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rx-modal-title"
         style={{ width: 860 }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={async (e) => {
@@ -1017,6 +1056,8 @@ function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: 
                 prescribedAt: nowIso(),
                 ...Object.fromEntries(Object.entries(cc).map(([k, v]) => [k, v])),
                 ...Object.fromEntries(Object.entries(oe).map(([k, v]) => [k, v])),
+                cc_notes: ccNotes,
+                oe_notes: oeNotes,
                 re_notes: re,
                 advice,
                 medications: meds.filter((m) => m.medicine.trim()),
@@ -1028,7 +1069,7 @@ function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: 
           }
         }}
       >
-        <h2>Prescription</h2>
+        <h2 id="rx-modal-title">Prescription</h2>
         {err && <div className="alert error">{err}</div>}
         <h3 style={{ margin: "16px 0 8px" }}>C/C</h3>
         <div className="checkgrid">
@@ -1038,6 +1079,7 @@ function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: 
             </label>
           ))}
         </div>
+        <Field label="C/C notes" value={ccNotes} onChange={setCcNotes} />
         <h3 style={{ margin: "16px 0 8px" }}>O/E</h3>
         <div className="checkgrid">
           {OE_FIELDS.map((f) => (
@@ -1046,6 +1088,7 @@ function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: 
             </label>
           ))}
         </div>
+        <Field label="O/E notes" value={oeNotes} onChange={setOeNotes} />
         <Field label="R/E" value={re} onChange={setRe} />
         <Field label="Advice" value={advice} onChange={setAdvice} />
         <h3 style={{ margin: "16px 0 8px" }}>Medication</h3>
@@ -1054,12 +1097,14 @@ function RxModal({ patientId, onClose, onSaved }: { patientId: string; onClose: 
             <Field label="Medicine" value={m.medicine} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, medicine: v } : x)))} />
             <Field label="Strength" value={m.strength} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, strength: v } : x)))} />
             <Field label="Dosage" value={m.dosage} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, dosage: v } : x)))} />
+            <Field label="Route" value={m.route} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, route: v } : x)))} />
             <Field label="Frequency" value={m.frequency} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, frequency: v } : x)))} />
             <Field label="Duration" value={m.duration} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, duration: v } : x)))} />
+            <Field label="Timing" value={m.timing} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, timing: v } : x)))} />
             <Field label="Instructions" value={m.instructions} onChange={(v) => setMeds(meds.map((x, j) => (j === i ? { ...x, instructions: v } : x)))} />
           </div>
         ))}
-        <button className="btn btn-tertiary" type="button" onClick={() => setMeds([...meds, { medicine: "", strength: "", dosage: "", frequency: "", duration: "", route: "", instructions: "" }])}>
+        <button className="btn btn-tertiary" type="button" onClick={() => setMeds([...meds, { medicine: "", strength: "", dosage: "", frequency: "", duration: "", route: "", timing: "", instructions: "" }])}>
           Add medicine
         </button>
         <div className="row" style={{ marginTop: 16 }}>
@@ -1589,10 +1634,7 @@ function InvoiceForm() {
   const toast = React.useContext(ToastCtx);
   const params = new URLSearchParams(location.hash.split("?")[1] || location.search);
   const [patientId, setPatientId] = useState(params.get("patient") || "");
-  const [desc, setDesc] = useState("Consultation");
-  const [qty, setQty] = useState("1");
-  const [price, setPrice] = useState("500.00");
-  const [treatmentId, setTreatmentId] = useState("");
+  const [lines, setLines] = useState([{ description: "Consultation", qty: "1", price: "500.00", treatmentId: "" }]);
   const [treatments, setTreatments] = useState<Array<Record<string, unknown>>>([]);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -1600,21 +1642,26 @@ function InvoiceForm() {
   }, []);
   return (
     <>
-      <PageHead title="New invoice" sub="Catalog prices are suggestions only. Selecting a treatment does not bill automatically until you issue." />
+      <PageHead title="New invoice" sub="Catalog prices are suggestions only. Selecting a treatment does not bill automatically until you issue. Multiple lines and partial payments are supported." />
       {err && <div className="alert error">{err}</div>}
       <form
         className="card grid"
         onSubmit={async (e) => {
           e.preventDefault();
           try {
-            const unit = Math.round(Number(price) * 100);
             const inv = await api<{ id: string }>("/api/invoices", {
               method: "POST",
               json: {
                 patientId,
                 issuedAt: nowIso(),
                 issue: true,
-                lines: [{ description: desc, quantity: Number(qty), unitPricePaisa: unit, discountPaisa: 0, treatmentId: treatmentId || undefined }],
+                lines: lines.map((l) => ({
+                  description: l.description,
+                  quantity: Number(l.qty),
+                  unitPricePaisa: Math.round(Number(l.price) * 100),
+                  discountPaisa: 0,
+                  treatmentId: l.treatmentId || undefined,
+                })),
               },
             });
             toast("Invoice issued. Treatment selection never bills automatically.");
@@ -1625,31 +1672,46 @@ function InvoiceForm() {
         }}
       >
         {params.get("patient") ? <Field label="Patient id" value={patientId} onChange={setPatientId} /> : <PatientPicker value={patientId} onChange={setPatientId} />}
-        <label className="field">
-          <span>Treatment catalog (optional)</span>
-          <select
-            value={treatmentId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setTreatmentId(id);
-              const t = treatments.find((x) => String(x.id) === id);
-              if (t) {
-                setDesc(String(t.name));
-                setPrice((Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0) / 100).toFixed(2));
-              }
-            }}
-          >
-            <option value="">Custom line</option>
-            {treatments.map((t) => (
-              <option key={String(t.id)} value={String(t.id)}>
-                {String(t.name)} — {formatMoney(Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0))}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Field label="Description" value={desc} onChange={setDesc} />
-        <Field label="Quantity" value={qty} onChange={setQty} />
-        <Field label="Unit price (BDT)" value={price} onChange={setPrice} />
+        {lines.map((line, i) => (
+          <div className="grid grid-2" key={i} style={{ gridColumn: "1 / -1" }}>
+            <label className="field">
+              <span>Treatment catalog (optional)</span>
+              <select
+                aria-label={`Line ${i + 1} treatment`}
+                value={line.treatmentId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const t = treatments.find((x) => String(x.id) === id);
+                  setLines(
+                    lines.map((x, j) =>
+                      j === i
+                        ? {
+                            ...x,
+                            treatmentId: id,
+                            description: t ? String(t.name) : x.description,
+                            price: t ? (Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0) / 100).toFixed(2) : x.price,
+                          }
+                        : x,
+                    ),
+                  );
+                }}
+              >
+                <option value="">Custom line</option>
+                {treatments.map((t) => (
+                  <option key={String(t.id)} value={String(t.id)}>
+                    {String(t.name)} — {formatMoney(Number(t.default_price_paisa ?? t.defaultPricePaisa ?? 0))}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Field label="Description" value={line.description} onChange={(v) => setLines(lines.map((x, j) => (j === i ? { ...x, description: v } : x)))} />
+            <Field label="Quantity" value={line.qty} onChange={(v) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: v } : x)))} />
+            <Field label="Unit price (BDT)" value={line.price} onChange={(v) => setLines(lines.map((x, j) => (j === i ? { ...x, price: v } : x)))} />
+          </div>
+        ))}
+        <button className="btn btn-tertiary" type="button" onClick={() => setLines([...lines, { description: "", qty: "1", price: "0.00", treatmentId: "" }])}>
+          Add line
+        </button>
         <button className="btn btn-primary">Issue invoice</button>
       </form>
     </>
@@ -1677,16 +1739,25 @@ function InvoiceView({ id }: { id: string }) {
             <button
               className="btn btn-secondary"
               onClick={async () => {
-                const blob = await api<Blob>("/api/pdf/invoice", { method: "POST", json: { id } });
+                const blob = await api<Blob>("/api/pdf/invoice", { method: "POST", json: { id, paper } });
                 downloadBlob(blob, `${inv.number}.pdf`);
               }}
             >
               Invoice PDF
             </button>
             <button
+              className="btn btn-tertiary"
+              onClick={async () => {
+                const blob = await api<Blob>("/api/pdf/invoice", { method: "POST", json: { id, paper } });
+                printBlob(blob, `${inv.number}.pdf`);
+              }}
+            >
+              Print invoice
+            </button>
+            <button
               className="btn btn-secondary"
               onClick={async () => {
-                const blob = await api<Blob>("/api/pdf/statement", { method: "POST", json: { patientId: inv.patientId } });
+                const blob = await api<Blob>("/api/pdf/statement", { method: "POST", json: { patientId: inv.patientId, paper } });
                 downloadBlob(blob, `statement-${inv.patientCode}.pdf`);
               }}
             >
@@ -1749,13 +1820,19 @@ function InvoiceView({ id }: { id: string }) {
           >
             Record payment
           </button>
-          <label className="field" style={{ marginTop: 8 }}>
-            <span>Receipt paper</span>
-            <select value={paper} onChange={(e) => setPaper(e.target.value)}>
-              <option value="A4">A4</option>
-              <option value="80mm">80 mm</option>
-            </select>
-          </label>
+          <div style={{ marginTop: 8 }}>
+            <PaperSelect value={paper} onChange={setPaper} />
+          </div>
+          <button
+            className="btn btn-tertiary"
+            style={{ marginTop: 8 }}
+            onClick={async () => {
+              const blob = await api<Blob>("/api/pdf/invoice", { method: "POST", json: { id, paper } });
+              printBlob(blob, `${inv.number}.pdf`);
+            }}
+          >
+            Print
+          </button>
           {Number(inv.paidPaisa) > 0 && String(inv.status) !== "void" ? (
             <button
               className="btn btn-secondary"
@@ -2087,9 +2164,11 @@ function Accounting() {
 }
 
 function Reports() {
+  const toast = React.useContext(ToastCtx);
   const [kind, setKind] = useState("revenue");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
   const [title, setTitle] = useState("Reports");
+  const [views, setViews] = useState<Array<Record<string, unknown>>>([]);
   const from = new Date(); from.setDate(1);
   const run = async () => {
     const r = await api<{ title: string; rows: Array<Record<string, unknown>> }>("/api/reports", {
@@ -2101,6 +2180,7 @@ function Reports() {
   };
   useEffect(() => {
     void run();
+    void api<Array<Record<string, unknown>>>("/api/saved-views?entity=report").then(setViews).catch(() => setViews([]));
   }, [kind]);
   const cols = rows[0] ? Object.keys(rows[0]) : [];
   return (
@@ -2109,13 +2189,44 @@ function Reports() {
         title={title}
         sub="Current month"
         actions={
-          <select aria-label="Report type" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {["revenue", "collections", "outstanding", "visits", "treatments", "appointments", "inventory", "patients", "expenses"].map((k) => (
-              <option key={k}>{k}</option>
-            ))}
-          </select>
+          <div className="row">
+            <select aria-label="Report type" value={kind} onChange={(e) => setKind(e.target.value)}>
+              {["revenue", "collections", "outstanding", "visits", "treatments", "appointments", "inventory", "patients", "expenses"].map((k) => (
+                <option key={k}>{k}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                const name = window.prompt("Saved view name", kind);
+                if (!name) return;
+                await api("/api/saved-views", { method: "POST", json: { name, entity: "report", filters: { kind } } });
+                setViews(await api("/api/saved-views?entity=report"));
+                toast("View saved.");
+              }}
+            >
+              Save view
+            </button>
+          </div>
         }
       />
+      {views.length > 0 && (
+        <div className="row" style={{ marginBottom: 12 }}>
+          {views.map((v) => (
+            <button
+              key={String(v.id)}
+              className="btn btn-tertiary"
+              onClick={() => {
+                const raw = v.filters_json ?? v.filtersJson ?? v.filters;
+                const filters = typeof raw === "string" ? (JSON.parse(raw) as { kind?: string }) : ((raw || {}) as { kind?: string });
+                if (filters.kind) setKind(filters.kind);
+              }}
+            >
+              {String(v.name)}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="card" style={{ padding: 0 }}>
         {!rows.length ? (
           <div className="empty">No rows for this period.</div>
@@ -2218,9 +2329,15 @@ function Settings({ session }: { session: SessionInfo }) {
       </div>
       {tab === "clinic" && (
         <div className="card grid grid-2">
-          {["clinicName", "address", "phone", "email", "dentistName", "dentistQualifications", "dentistRegistration"].map((k) => (
+          {["clinicName", "address", "phone", "email", "website", "dentistName", "dentistQualifications", "dentistRegistration"].map((k) => (
             <Field key={k} label={k} value={String(clinic[k] || "")} onChange={(v) => setClinic({ ...clinic, [k]: v })} />
           ))}
+          <PaperSelect value={String(clinic.paperSize || "A4")} onChange={(v) => setClinic({ ...clinic, paperSize: v })} />
+          <Field
+            label="Tax rate (basis points, 1500 = 15%)"
+            value={String(clinic.taxRateBps || "0")}
+            onChange={(v) => setClinic({ ...clinic, taxRateBps: v })}
+          />
           <Field
             label="Inactivity lock (minutes)"
             value={String(clinic.inactivityTimeoutMinutes || "15")}
@@ -2232,7 +2349,12 @@ function Settings({ session }: { session: SessionInfo }) {
               onClick={async () => {
                 await api("/api/clinic", {
                   method: "PUT",
-                  json: { ...clinic, inactivityTimeoutMinutes: Number(clinic.inactivityTimeoutMinutes || 15) },
+                  json: {
+                    ...clinic,
+                    inactivityTimeoutMinutes: Number(clinic.inactivityTimeoutMinutes || 15),
+                    taxRateBps: Number(clinic.taxRateBps || 0),
+                    paperSize: clinic.paperSize || "A4",
+                  },
                 });
                 toast("Settings saved.");
               }}
@@ -2540,12 +2662,16 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     { label: "Open Reports", run: () => go("reports") },
     { label: "Open Settings", run: () => go("settings") },
     { label: "Open Queue", run: () => go("queue") },
+    { label: "Open Inventory", run: () => go("inventory") },
+    { label: "Open Accounting", run: () => go("accounting") },
+    { label: "Open Notifications", run: () => go("notifications") },
     { label: "Backup", run: () => go("settings") },
+    { label: "Lock application", run: () => void AuthApi.lock() },
   ].filter((c) => c.label.toLowerCase().includes(q.toLowerCase()));
   const [i, setI] = useState(0);
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
         <input
           autoFocus
           value={q}
@@ -2580,7 +2706,7 @@ function SearchModal({ onClose }: { onClose: () => void }) {
   const t = useRef<number | null>(null);
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Global search" onClick={(e) => e.stopPropagation()}>
         <input
           autoFocus
           value={q}

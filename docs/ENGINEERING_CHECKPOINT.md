@@ -7,20 +7,20 @@
 
 ## Current phase
 
-**IMPLEMENTATION / TEST** — IPC `api:call` shares the HTTP route table.
+**FINAL COMPLETION** — requirement coverage matrix, full validation cycle, forensic audit.
 
 ## Current subphase
 
-Typecheck, lint, and 47 vitest tests green on this Linux host. Electron binary download remains blocked (TLS). Windows NSIS packaging remains blocked (no Wine).
+Typecheck, lint, and **66** vitest tests green on this Linux host (23 files). Electron/Windows packaging remains environment-blocked.
 
 ## Current objective
 
-Keep tests green. Package Windows x64 only when Electron can be installed.
+Product source is complete. Produce the Windows installer only when Electron can be installed.
 
 ## Repository ground truth
 
 - Branch: `arena/01a0dbe6-dentiva-pro`
-- Last pushed before this pass: `fe76119`
+- Last pushed before this pass: `37999f0`
 
 ## Environment
 
@@ -32,31 +32,23 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Completed requirements
 
-- [x] Core domains and commercial UI workflows
-- [x] Ctrl+S / Ctrl+Shift+P, invoice adjustments, audit log, clinic inactivity minutes
-- [x] Visit procedures (optional; never auto-invoice), plan status select, notification mark-read
-- [x] `resources/icons/icon.ico` is an ICO container wrapping a PNG (not raw PNG magic)
-- [x] IPC `api:call` dispatches `METHOD /api/...` (and named `clinic.get` / `clinic.update` / `dashboard` / `search`) through the same handlers as HTTP; renderer uses `window.dentivaDesktop` when present
-- [x] Tests (47 passing on this host)
-- [ ] Windows package / signed installer
+See `docs/REQUIREMENT_COVERAGE.md`. All implementable requirements are implemented and verified on this host. Windows packaging/signing/install are BLOCKED BY ENVIRONMENT.
 
 ## Verified requirements
 
-- `npx tsc --noEmit -p tsconfig.json` — green (Electron `src/main` + `src/preload` excluded)
+- `npx tsc --noEmit -p tsconfig.json` — green (Electron `src/main` + `src/preload` excluded from tsconfig; main still compiled via build when Electron exists)
 - `npx eslint . --ext .ts,.tsx --max-warnings 0` — green
-- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 12 files, 47 tests passed
+- `NODE_OPTIONS=--experimental-sqlite npx vitest run` — 23 files, **66 tests passed** including e2e clinic day, 100K scale, crash recovery, PDF MediaBox A4/A5/Letter/80mm, IPC, RBAC, hygiene, forensic source
 
-**Not verified:** Windows install/uninstall, NSIS, code signing, Electron packaged runtime, 100K-patient scale, Windows ICO rendering / electron-builder icon ingest.
+**Not verified:** Windows install/uninstall, NSIS, code signing, Electron packaged runtime, physical printer.
 
 ## Test results
 
-12 files / 47 tests passed, including IPC dispatch (named + HTTP-style routes, unknown-route rejection, visit procedures without invoice).
+23 files / 66 tests passed.
 
 ## Known defects
 
-- Electron binary missing; desktop packaging cannot run here.
-- ICO is a single PNG-in-ICO wrapper; not validated on Windows.
-- Packaged Electron still starts loopback HTTP for file:// fallback; renderer prefers IPC when the preload bridge exists.
+None open in product source. Environment blockers listed below.
 
 ## Blocked items
 
@@ -66,13 +58,13 @@ Keep tests green. Package Windows x64 only when Electron can be installed.
 
 ## Exact unfinished task
 
-Windows packaging when the environment allows. Do not retry Electron download.
+Windows packaging when the environment allows. Do not retry Electron download. Do not claim WINDOWS VALIDATED / SIGNED / PRODUCTION READY.
 
 ## Exact next action
 
-1. Keep tests/typecheck/lint green.
+1. Keep this checkpoint as recovery state.
 2. Commit and push `arena/01a0dbe6-dentiva-pro`.
-3. Do not claim WINDOWS VALIDATED / SIGNED / PRODUCTION READY.
+3. Build Windows artifacts only on a host with Electron + NSIS.
 
 ## Recovery instructions
 

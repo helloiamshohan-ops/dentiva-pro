@@ -1,0 +1,1 @@
+# No dist/release artifacts on this host. Hash after a successful Windows/Electron build.
